@@ -1,0 +1,113 @@
+# VERSE -- .gitignore
+# Excludes generated files, dependencies, secrets, and local tooling artifacts
+# from the Git repository. Run `pnpm install` after cloning to restore all
+# dependencies from package.json and pnpm-lock.yaml.
+
+
+# --- Node Dependencies ------------------------------------------------------
+# Never commit node_modules -- restore with: pnpm install
+node_modules/
+.pnp
+.pnp.js
+
+
+# --- Build Output ------------------------------------------------------------
+dist/
+dist-ssr/
+build/
+out/
+
+
+# --- Environment Variables and Secrets --------------------------------------
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.staging
+
+
+# --- Logs -------------------------------------------------------------------
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+logs/
+
+
+# --- Runtime and Cache ------------------------------------------------------
+.cache/
+.tmp/
+temp/
+tmp/
+.vite/
+vite.config.ts.timestamp*
+
+
+# --- Test Coverage ----------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+
+
+# --- TypeScript Build Info --------------------------------------------------
+*.tsbuildinfo
+
+
+# --- IDE and Editor Settings ------------------------------------------------
+# VSCode
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains IDEs (WebStorm, IntelliJ)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+
+
+# --- Operating System Files -------------------------------------------------
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+
+# --- Package Manager Artifacts ----------------------------------------------
+# Note: pnpm-lock.yaml IS committed -- it ensures reproducible installs
+package-lock.json
+yarn.lock
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+
+# --- Storybook --------------------------------------------------------------
+storybook-static/
+
+
+# --- Miscellaneous ----------------------------------------------------------
+*.local
+.eslintcache
+.stylelintcache
+*.tgz
+*.tar.gz
