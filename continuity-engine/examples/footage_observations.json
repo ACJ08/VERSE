@@ -1,0 +1,52 @@
+{
+  "project_id": "VERSE_DEMO",
+  "source": "footage",
+  "observations": [
+    {
+      "scene_id": "SCENE_011",
+      "sequence": 11,
+      "timestamp": "00:08.4",
+      "detections": [
+        {
+          "name": "Sarah",
+          "type": "character",
+          "confidence": 0.94,
+          "wears": "navy jacket",
+          "holds": "glass",
+          "hand": "left",
+          "position": "frame left"
+        }
+      ]
+    },
+    {
+      "scene_id": "SCENE_012",
+      "sequence": 12,
+      "timestamp": "00:14.2",
+      "detections": [
+        {
+          "name": "Sarah",
+          "type": "character",
+          "confidence": 0.91,
+          "wears": "navy jacket",
+          "holds": "glass",
+          "hand": "right",
+          "position": "frame right"
+        }
+      ]
+    },
+    {
+      "scene_id": "SCENE_013",
+      "sequence": 13,
+      "timestamp": "00:31.7",
+      "detections": [
+        {
+          "name": "Sarah",
+          "type": "character",
+          "confidence": 0.88,
+          "wears": "grey shirt",
+          "position": "frame right"
+        }
+      ]
+    }
+  ]
+}

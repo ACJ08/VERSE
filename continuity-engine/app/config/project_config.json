@@ -1,0 +1,64 @@
+{
+  "project_id": "VERSE_DEMO",
+  "engine_version": "0.1.0",
+
+  "trust_levels": {
+    "human": 1.0,
+    "script": 0.8,
+    "call_sheet": 0.65,
+    "footage": 0.5,
+    "ai_inference": 0.3
+  },
+
+  "category_weights": {
+    "props": 1.0,
+    "costume": 1.0,
+    "movement": 0.8,
+    "spatial": 0.8,
+    "narrative": 1.2,
+    "lighting": 0.6,
+    "other": 0.5
+  },
+
+  "severity_penalties": {
+    "low": 10,
+    "medium": 30,
+    "high": 50,
+    "critical": 75
+  },
+
+  "thresholds": {
+    "min_observation_confidence": 0.35,
+    "min_conflict_confidence": 0.4,
+    "entity_match_similarity": 0.72,
+    "value_match_similarity": 0.85
+  },
+
+  "assumptions": {
+    "default_expires_after_scenes": 2,
+    "max_penalty_reduction": 0.7
+  },
+
+  "repetition": {
+    "escalate_after_occurrences": 2,
+    "max_severity": "high"
+  },
+
+  "custom_categories": [],
+
+  "attribute_aliases": {
+    "held_in_hand": ["hand", "hand_position", "holding_hand", "which_hand", "hand_used"],
+    "holds": ["holding", "prop_held", "carried_item", "object_in_hand"],
+    "wears": ["costume", "wardrobe", "outfit", "clothing", "attire"],
+    "location": ["place", "setting", "scene_location", "where"],
+    "screen_position": ["position", "frame_position", "screen_direction", "blocking"],
+    "movement": ["motion", "action_movement", "moves"],
+    "lighting": ["light", "light_state", "illumination"]
+  },
+
+  "value_synonyms": {
+    "left": ["left hand", "l", "left-hand", "lh"],
+    "right": ["right hand", "r", "right-hand", "rh"],
+    "blue_jacket": ["blue blazer", "navy jacket", "dark blue coat", "navy blazer"]
+  }
+}
