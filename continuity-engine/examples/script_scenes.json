@@ -1,0 +1,62 @@
+{
+  "project_id": "VERSE_DEMO",
+  "source": "script",
+  "scenes": [
+    {
+      "scene_id": "SCENE_011",
+      "sequence": 11,
+      "location": "coffee shop",
+      "lighting": "warm afternoon",
+      "action": "Sarah sits by the window and picks up a glass of water with her left hand.",
+      "characters": [
+        {
+          "name": "Sarah",
+          "type": "character",
+          "wears": "blue blazer",
+          "holds": "glass",
+          "held_in_hand": "left",
+          "screen_position": "frame left"
+        }
+      ],
+      "props": [
+        { "name": "glass", "type": "prop", "location": "table" }
+      ]
+    },
+    {
+      "scene_id": "SCENE_012",
+      "sequence": 12,
+      "location": "coffee shop",
+      "lighting": "warm afternoon",
+      "action": "Sarah raises the glass and speaks. The crowd panics and rushes through the shop.",
+      "characters": [
+        {
+          "name": "Sarah",
+          "type": "character",
+          "wears": "blue blazer",
+          "holds": "glass",
+          "held_in_hand": "left",
+          "screen_position": "frame left"
+        }
+      ],
+      "props": [
+        { "name": "glass", "type": "prop", "location": "table" },
+        { "name": "notebook", "type": "prop", "location": "table" }
+      ]
+    },
+    {
+      "scene_id": "SCENE_013",
+      "sequence": 13,
+      "location": "street",
+      "lighting": "overcast",
+      "action": "Sarah removes her blue blazer and steps outside.",
+      "characters": [
+        {
+          "name": "Sarah",
+          "type": "character",
+          "wears": "grey shirt",
+          "screen_position": "frame right"
+        }
+      ]
+    }
+  ]
+}

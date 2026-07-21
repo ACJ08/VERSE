@@ -1,0 +1,13 @@
+VERSE_Continuity_AI_Engineer_Plan.md
+.claude
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+*.db
+*.sqlite3
+.env
