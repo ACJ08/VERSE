@@ -11,10 +11,13 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Callable, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 
 from app.config import ProjectConfig
 from app.models.schemas import Category, Fact, TemporaryAssumption
+
+if TYPE_CHECKING:
+    from app.reporting.explanations import LanguageModel
 
 # Narrative triggers -> what they make plausible.
 # Kept as data so non-Python teammates can extend the table.
@@ -69,17 +72,21 @@ class ExplicitChange:
 class AssumptionEngine:
     """Extracts explicit changes and temporary assumptions from narrative facts.
 
-    `text_extractor` is the AI hook: pass a callable to enrich extraction with
-    an LLM later. Rule-based extraction always runs first.
+    Rule-based keyword matching always runs first. When a LanguageModel is
+    available (passed as `llm`), it is also queried on the same text so that
+    assumptions from phrasings not covered by the keyword table are captured.
+    LLM failures are swallowed — the rule-based path always produces a result.
     """
 
     def __init__(
         self,
         config: ProjectConfig,
         text_extractor: Callable[[str], list[str]] | None = None,
+        llm: "LanguageModel | None" = None,
     ) -> None:
         self._config = config
         self._extractor = text_extractor
+        self._llm = llm
         self._assumptions: list[TemporaryAssumption] = []
         self._explicit: list[ExplicitChange] = []
 
@@ -94,6 +101,9 @@ class AssumptionEngine:
             sequence = sequence_of(fact.scene_id)
             self._scan_triggers(text, fact, sequence)
             self._scan_explicit(text, fact, sequence)
+            # LLM-backed pass: detect context the keyword table may have missed.
+            if self._llm is not None:
+                self._llm_scan_triggers(text, fact, sequence)
 
     def _scan_triggers(self, text: str, fact: Fact, sequence: int) -> None:
         lowered = text.lower()
@@ -114,6 +124,61 @@ class AssumptionEngine:
                     affects_categories=categories,
                 )
             )
+
+    def _llm_scan_triggers(self, text: str, fact: Fact, sequence: int) -> None:
+        """Ask the LLM whether the narrative text implies a physical disturbance.
+
+        The LLM is asked to classify the text into one of the _TRIGGERS categories
+        (or "none"). A recognised category generates a TemporaryAssumption identical
+        in structure to the rule-based ones. Deduplication prevents double-counting
+        if the text also matched a keyword.
+        """
+        # Skip if we already generated an assumption for this (text, scene) pair.
+        if any(a.source_text == text and a.scene_id == fact.scene_id for a in self._assumptions):
+            return
+        try:
+            prompt = (
+                "Classify the following screenplay action line into ONE of these categories: "
+                "crowd_disturbance, fight, environmental_event, lighting_change, none.\n"
+                "Reply with ONLY the category name and nothing else.\n\n"
+                f"Action: {text[:300]}"
+            )
+            raw = self._llm(prompt).strip().lower()
+            category_map: dict[str, tuple[str, list[Category], float]] = {
+                "crowd_disturbance": (
+                    "Crowd disturbance may have moved objects and disordered the environment.",
+                    [Category.PROPS, Category.SPATIAL, Category.MOVEMENT], 0.6,
+                ),
+                "fight": (
+                    "Physical altercation may have displaced props and disturbed costume.",
+                    [Category.PROPS, Category.COSTUME, Category.MOVEMENT], 0.65,
+                ),
+                "environmental_event": (
+                    "Environmental event may have altered the set and lighting.",
+                    [Category.PROPS, Category.LIGHTING, Category.SPATIAL], 0.55,
+                ),
+                "lighting_change": (
+                    "Lighting conditions may have changed within the scene.",
+                    [Category.LIGHTING], 0.5,
+                ),
+            }
+            if raw in category_map:
+                description, categories, confidence = category_map[raw]
+                import uuid as _uuid
+                self._assumptions.append(
+                    TemporaryAssumption(
+                        assumption_id=f"ASSUM_{_uuid.uuid4().hex[:8]}",
+                        description=description,
+                        scene_id=fact.scene_id,
+                        created_at_sequence=sequence,
+                        expires_after_scenes=self._config.assumption_ttl,
+                        confidence=confidence,
+                        source_text=text,
+                        affects_categories=categories,
+                    )
+                )
+        except Exception:
+            pass  # LLM failure must never break analysis
 
     def _scan_explicit(self, text: str, fact: Fact, sequence: int) -> None:
         lowered = text.lower()

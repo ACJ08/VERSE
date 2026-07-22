@@ -64,7 +64,7 @@ class ContinuityEngine:
 
         self.graph = KnowledgeGraph(self.config, self._matcher)
         self.memory = ProductionMemory(self.graph, self.config)
-        self.assumptions = AssumptionEngine(self.config)
+        self.assumptions = AssumptionEngine(self.config, llm=llm)
         self.detector = ConflictDetector(
             self.graph, self.memory, self.config, self.assumptions, self._normaliser
         )
