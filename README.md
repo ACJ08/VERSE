@@ -1,11 +1,4 @@
 # VERSE
-### Visual & Explainable Reasoning for Semantic Evolution
-
-> **AI-Powered Semantic Continuity and Production Intelligence for Intelligent Filmmaking**
->
-> *"Every story lives in its own VERSE."*
-
-# VERSE
 
 <p align="center">
   <img src="src/imports/VERSE_LOGO_2.png" alt="VERSE Logo" width="220">
