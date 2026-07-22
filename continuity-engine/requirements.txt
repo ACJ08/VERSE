@@ -2,6 +2,12 @@ pydantic>=2.6,<3
 networkx>=3.2,<4
 fastapi>=0.110,<1
 uvicorn[standard]>=0.27,<1
+python-multipart>=0.0.9,<1
+python-jose[cryptography]>=3.3,<4
+bcrypt>=4.0,<6
+
+# optional – IBM watsonx (install separately when credentials are available)
+# ibm-watsonx-ai>=1.0
 
 # dev
 pytest>=8.0
