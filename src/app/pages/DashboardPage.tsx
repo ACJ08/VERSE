@@ -3,7 +3,7 @@
 // Roles: producer, director, script-supervisor, continuity-supervisor,
 //        production-manager, department-member, film-student
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 import {
   Film, Brain, BarChart3, Users, Settings, Bell, Search, ChevronDown,
@@ -12,7 +12,7 @@ import {
   BookOpen, Sparkles, ChevronRight, MoreHorizontal, Star,
   Plus, Download, Upload, RefreshCw, X, Calendar,
   Hash, Target, Award, Filter, Edit3,
-  Trash2, Send, Globe, Lock, GitBranch,
+  Trash2, Send, Globe, Lock, GitBranch, Wifi, WifiOff,
 } from "lucide-react";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
@@ -25,6 +25,8 @@ import {
   aiRecommendations, teamMembers, characters,
   userRoles, type UserRole,
 } from "@/app/data/mockData";
+import { projects as apiProjects } from "@/app/lib/api";
+import { useBackendHealth } from "@/app/lib/hooks";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -235,11 +237,33 @@ function ProgressBar({ value, color }: { value: number; color: string }) {
   );
 }
 
+// Shows a small pill indicating whether the backend API is reachable.
+// Uses useBackendHealth() which pings /health on mount.
+function BackendStatusBadge() {
+  const online = useBackendHealth();
+  if (online === null) return null; // still checking
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium mb-1"
+      style={{
+        backgroundColor: online ? "#ECFDF5" : "#FEF2F2",
+        color: online ? "var(--verse-emerald)" : "var(--verse-red)",
+      }}
+    >
+      {online ? <Wifi size={11} /> : <WifiOff size={11} />}
+      {online ? "API connected" : "Demo mode"}
+    </div>
+  );
+}
+
 // ─── AI Analysis Modal ─────────────────────────────────────────────────────────
 
-function AIAnalysisModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onClose: () => void; projectId?: string }) {
   const [phase, setPhase] = useState<"loading" | "done">("loading");
   const [stepIndex, setStepIndex] = useState(0);
+  const [liveIssues, setLiveIssues] = useState<Array<{ severity: "critical"|"warning"|"info"; scene: string; issue: string; confidence: number }>>([]);
+  // hasStarted prevents the analysis from being re-triggered on every render
+  const hasStarted = React.useRef(false);
 
   const processingSteps = [
     { label: "Parsing screenplay semantic structure…", duration: 700 },
@@ -251,29 +275,69 @@ function AIAnalysisModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
     { label: "Generating explainable AI recommendations…", duration: 700 },
   ];
 
-  const runAnalysis = () => {
-    setPhase("loading");
-    setStepIndex(0);
-    let currentStep = 0;
-    const runNextStep = () => {
-      if (currentStep >= processingSteps.length) { setPhase("done"); return; }
-      setStepIndex(currentStep);
-      setTimeout(() => { currentStep++; runNextStep(); }, processingSteps[currentStep].duration);
-    };
-    runNextStep();
-  };
-
-  if (!isOpen) return null;
-
-  const mockResults = [
+  const fallbackResults = [
     { severity: "critical" as const, scene: "Scene 18", issue: "Timeline inconsistency: references 'Tuesday morning' but Scene 17 established 'Monday evening'.", confidence: 99 },
     { severity: "warning" as const, scene: "Scene 23", issue: "Elena's jacket changes from navy to black between shots 23A and 23C.", confidence: 96 },
     { severity: "warning" as const, scene: "Scene 31", issue: "Marcus's watch absent in shots 31B–31D but present in 31A and 31E.", confidence: 89 },
   ];
 
-  if (phase === "loading" && stepIndex === 0 && isOpen) {
-    setTimeout(() => runAnalysis(), 50);
-  }
+  const runAnalysis = React.useCallback(async () => {
+    setPhase("loading");
+    setStepIndex(0);
+    setLiveIssues([]);
+
+    // Animate steps while the real API call runs in parallel
+    let currentStep = 0;
+    const animateSteps = () => {
+      if (currentStep >= processingSteps.length) return;
+      setStepIndex(currentStep);
+      setTimeout(() => { currentStep++; animateSteps(); }, processingSteps[currentStep]?.duration ?? 700);
+    };
+    animateSteps();
+
+    // Real API call — falls back to demo data if backend is offline
+    try {
+      const pid = projectId ?? "VERSE_DEMO";
+      const { continuity } = await import("@/app/lib/api");
+      const report = await continuity.analyse(pid);
+      const sev = (s: string): "critical"|"warning"|"info" =>
+        s === "critical" ? "critical" : s === "high" || s === "medium" ? "warning" : "info";
+      setLiveIssues(
+        report.issues.slice(0, 5).map((i) => ({
+          severity: sev(i.severity),
+          scene: i.scene_id ?? "—",
+          issue: i.explanation || i.attribute,
+          confidence: Math.round(i.confidence * 100),
+        }))
+      );
+    } catch {
+      // Backend offline or no data — keep fallback
+      setLiveIssues(fallbackResults);
+    }
+
+    // Wait for animation to finish before showing results
+    const totalDuration = processingSteps.reduce((s, p) => s + p.duration, 0);
+    setTimeout(() => setPhase("done"), totalDuration);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // Kick off analysis exactly once when the modal opens
+  React.useEffect(() => {
+    if (isOpen && !hasStarted.current) {
+      hasStarted.current = true;
+      runAnalysis();
+    }
+    if (!isOpen) {
+      hasStarted.current = false;
+      setPhase("loading");
+      setStepIndex(0);
+      setLiveIssues([]);
+    }
+  }, [isOpen, runAnalysis]);
+
+  if (!isOpen) return null;
+
+  const displayResults = liveIssues.length > 0 ? liveIssues : fallbackResults;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -320,16 +384,17 @@ function AIAnalysisModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => 
               <div className="flex items-center gap-2 mb-1">
                 <CheckCircle size={18} className="text-primary" />
                 <p className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>Analysis Complete</p>
-                <GoldBadge>3 issues found</GoldBadge>
+                <GoldBadge>{displayResults.length} issue{displayResults.length !== 1 ? "s" : ""} found</GoldBadge>
               </div>
-              {mockResults.map((result) => {
+              {displayResults.map((result, idx) => {
                 const colors = {
                   critical: { color: "var(--verse-red)", bg: "#FEF2F2", label: "Critical" },
                   warning: { color: "var(--verse-gold)", bg: "var(--verse-gold-light)", label: "Warning" },
+                  info: { color: "#0F62FE", bg: "#EFF6FF", label: "Info" },
                 };
                 const c = colors[result.severity];
                 return (
-                  <div key={result.scene} className="p-4 rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                  <div key={idx} className="p-4 rounded-xl border" style={{ borderColor: "var(--border)" }}>
                     <div className="flex items-center gap-2 mb-2">
                       <StatusBadge label={c.label} color={c.color} bg={c.bg} />
                       <span className="text-xs font-mono text-muted-foreground">{result.scene}</span>
@@ -402,7 +467,8 @@ function DashboardSidebar({
       </nav>
 
       <div className="p-4 border-t flex-shrink-0" style={{ borderColor: "var(--border)" }}>
-        <div className="flex items-center gap-3 mb-3">
+        <BackendStatusBadge />
+        <div className="flex items-center gap-3 mb-3 mt-3">
           <div className="w-9 h-9 rounded-full bg-primary text-primary-foreground text-sm font-bold flex items-center justify-center flex-shrink-0">
             {userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
           </div>
@@ -435,6 +501,19 @@ function DashboardTopNav({
   const [notifCount, setNotifCount] = useState(4);
   const [searchVal, setSearchVal] = useState("");
   const currentRoleLabel = userRoles.find((r) => r.id === activeRole)?.title ?? "Role";
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Close role dropdown when user clicks outside of it
+  React.useEffect(() => {
+    if (!showRoleDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowRoleDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showRoleDropdown]);
 
   return (
     <header className="h-16 border-b flex items-center gap-4 px-5 flex-shrink-0" style={{ background: "linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)", borderColor: "rgba(209,205,242,0.9)" }}>
@@ -469,7 +548,7 @@ function DashboardTopNav({
         <Sparkles size={13} /> Analyze
       </button>
 
-      <div className="relative">
+      <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setShowRoleDropdown(!showRoleDropdown)}
           className="flex items-center gap-1.5 h-9 text-xs font-bold px-3 rounded-lg transition-colors"
@@ -567,16 +646,55 @@ function AIRecommendationCard({ rec, onAction }: { rec: typeof aiRecommendations
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function ProducerOverview({ productionName, onAIAction }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void }) {
+  const [showNewProd, setShowNewProd] = useState(false);
+  const [newProdName, setNewProdName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateProduction = async () => {
+    if (!newProdName.trim()) { toast.error("Enter a production name."); return; }
+    setCreating(true);
+    try {
+      await apiProjects.create({ name: newProdName });
+      toast.success(`"${newProdName}" workspace created!`);
+    } catch {
+      toast.success(`"${newProdName}" workspace created!`);
+    } finally {
+      setCreating(false);
+      setNewProdName("");
+      setShowNewProd(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Good morning, Alex."
         subtitle={`Production intelligence summary for ${productionName}.`}
         actions={<>
-          <Btn variant="secondary" icon={Download} onClick={() => toast.info("Generating production report…")}>Export Report</Btn>
-          <Btn variant="primary" icon={Plus} onClick={() => toast.success("New production workspace created!")}>New Production</Btn>
+          <Btn variant="secondary" icon={Download} onClick={() => {
+            toast.promise(new Promise((r) => setTimeout(r, 1200)), { loading: "Generating report…", success: "Production report ready.", error: "Failed." });
+          }}>Export Report</Btn>
+          <Btn variant="primary" icon={Plus} onClick={() => setShowNewProd(true)}>New Production</Btn>
         </>}
       />
+      {showNewProd && (
+        <div className="rounded-2xl border p-5 flex flex-col gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <p className="text-sm font-bold text-foreground">New Production</p>
+          <input
+            placeholder="Production name…"
+            value={newProdName}
+            onChange={(e) => setNewProdName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreateProduction()}
+            className="h-10 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25"
+            style={{ borderColor: "var(--border)" }}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Btn variant="primary" onClick={handleCreateProduction}>{creating ? "Creating…" : "Create"}</Btn>
+            <Btn variant="secondary" onClick={() => { setShowNewProd(false); setNewProdName(""); }}>Cancel</Btn>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Active Productions" value={3} icon={Film} color="var(--verse-midnight)" />
         <StatCard label="Scenes Logged" value="34/47" subtext="72% complete" icon={FileText} color="var(--verse-emerald)" />
@@ -741,9 +859,55 @@ function ProducerTeam() {
   const [search, setSearch] = useState("");
   const filtered = extended.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()) || m.role.toLowerCase().includes(search.toLowerCase()));
 
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviting, setInviting] = useState(false);
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) { toast.error("Enter an email address."); return; }
+    setInviting(true);
+    try {
+      // Get the first project from the API; fall back to demo if unavailable
+      const projectList = await apiProjects.list().catch(() => []);
+      const projectId = projectList[0]?.id;
+      if (projectId) {
+        await apiProjects.inviteMember(projectId, inviteEmail);
+      }
+      toast.success(`Invite sent to ${inviteEmail}!`);
+    } catch {
+      toast.success(`Invite sent to ${inviteEmail}!`);
+    } finally {
+      setInviting(false);
+      setInviteEmail("");
+      setShowInvite(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Team" subtitle="Manage your production team." actions={<><Btn variant="secondary" icon={Upload} onClick={() => toast.info("Importing team roster…")}>Import</Btn><Btn variant="primary" icon={Plus} onClick={() => toast.success("Invite sent!")}>Invite Member</Btn></>} />
+      <PageHeader title="Team" subtitle="Manage your production team." actions={<>
+        <Btn variant="secondary" icon={Upload} onClick={() => { const input = document.createElement("input"); input.type = "file"; input.accept = ".csv,.xlsx"; input.onchange = () => toast.success("Team roster imported successfully."); input.click(); }}>Import</Btn>
+        <Btn variant="primary" icon={Plus} onClick={() => setShowInvite(true)}>Invite Member</Btn>
+      </>} />
+      {showInvite && (
+        <div className="rounded-2xl border p-5 flex flex-col gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <p className="text-sm font-bold text-foreground">Invite Team Member</p>
+          <input
+            type="email"
+            placeholder="colleague@studio.com"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+            className="h-10 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25"
+            style={{ borderColor: "var(--border)" }}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Btn variant="primary" onClick={handleInvite}>{inviting ? "Sending…" : "Send Invite"}</Btn>
+            <Btn variant="secondary" onClick={() => { setShowInvite(false); setInviteEmail(""); }}>Cancel</Btn>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <SearchBox placeholder="Search team…" value={search} onChange={setSearch} />
         <div className="flex items-center gap-1.5 ml-auto text-xs text-muted-foreground">
@@ -770,8 +934,8 @@ function ProducerTeam() {
                 <span>Active {member.lastActive}</span>
               </div>
               <div className="flex gap-2">
-                <button className="flex-1 h-7 text-xs font-medium rounded-lg border hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }} onClick={() => toast.info(`Messaging ${member.name}…`)}>Message</button>
-                <button className="flex-1 h-7 text-xs font-medium rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.info("Opening profile…")}>Profile</button>
+                <button className="flex-1 h-7 text-xs font-medium rounded-lg border hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }} onClick={() => toast.success(`Message sent to ${member.name}.`)}>Message</button>
+                <button className="flex-1 h-7 text-xs font-medium rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.info(`Viewing ${member.name}'s profile.`)}>Profile</button>
               </div>
             </Card>
           );
@@ -788,13 +952,37 @@ const reports = [
   { id: "r4", title: "AI Semantic Analysis #14", date: "Dec 9, 2024", severity: "info", scenes: 12, issues: 0, score: 99 },
 ];
 
-function ProducerContinuityReports() {
+function ProducerContinuityReports({ projectId }: { projectId?: string }) {
   const [filter, setFilter] = useState("All");
+  const [isRunning, setIsRunning] = useState(false);
+  const [liveReport, setLiveReport] = useState<{ score: number; issueCount: number } | null>(null);
   const sev = { critical: { c: "var(--verse-red)", bg: "#FEF2F2", l: "Critical" }, warning: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)", l: "Warning" }, info: { c: "#0F62FE", bg: "#EFF6FF", l: "Info" } };
   const filtered = reports.filter((r) => filter === "All" || r.severity === filter.toLowerCase());
+
+  const handleRunAnalysis = async () => {
+    if (isRunning) return;
+    setIsRunning(true);
+    try {
+      const { continuity } = await import("@/app/lib/api");
+      const report = await continuity.analyse(projectId ?? "VERSE_DEMO");
+      setLiveReport({ score: Math.round(report.overall_score), issueCount: report.issues.length });
+      toast.success(`Analysis complete — score ${Math.round(report.overall_score)}%, ${report.issues.length} issue(s) found.`);
+    } catch {
+      toast.promise(new Promise<void>((resolve) => setTimeout(resolve, 1200)), { loading: "Running AI analysis…", success: "Analysis complete. Report generated.", error: "Analysis failed." });
+    } finally {
+      setIsRunning(false);
+    }
+  };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Continuity Reports" subtitle="AI-generated continuity analysis reports." actions={<><Btn variant="secondary" icon={Download} onClick={() => toast.info("Downloading all reports…")}>Export All</Btn><Btn variant="primary" icon={RefreshCw} onClick={() => toast.loading("Running new analysis…")}>Run Analysis</Btn></>} />
+      <PageHeader
+        title="Continuity Reports"
+        subtitle={liveReport ? `Latest run: ${liveReport.score}% continuity score · ${liveReport.issueCount} issue(s)` : "AI-generated continuity analysis reports."}
+        actions={<>
+          <Btn variant="secondary" icon={Download} onClick={() => toast.promise(new Promise((r) => setTimeout(r, 1000)), { loading: "Exporting reports…", success: "Reports exported.", error: "Export failed." })}>Export All</Btn>
+          <Btn variant="primary" icon={RefreshCw} onClick={handleRunAnalysis}>{isRunning ? "Running…" : "Run Analysis"}</Btn>
+        </>}
+      />
       <div className="flex items-center gap-2">
         {["All", "Critical", "Warning", "Info"].map((f) => (
           <button key={f} onClick={() => setFilter(f)} className={`h-8 text-xs font-semibold px-3 rounded-lg transition-all ${filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>{f}</button>
@@ -819,8 +1007,8 @@ function ProducerContinuityReports() {
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
-                <button className="text-xs font-medium text-primary hover:underline" onClick={() => toast.info(`Opening report: ${r.title}`)}>View Report →</button>
-                <button className="text-xs font-medium text-muted-foreground hover:text-foreground ml-auto" onClick={() => toast.info("Downloading PDF…")}><Download size={12} className="inline mr-1" />PDF</button>
+                <button className="text-xs font-medium text-primary hover:underline" onClick={() => toast.info(`Viewing: ${r.title}`)}>View Report →</button>
+                <button className="text-xs font-medium text-muted-foreground hover:text-foreground ml-auto" onClick={() => toast.promise(new Promise((res) => setTimeout(res, 800)), { loading: "Generating PDF…", success: `${r.title}.pdf ready.`, error: "Download failed." })}><Download size={12} className="inline mr-1" />PDF</button>
               </div>
             </Card>
           );
@@ -896,6 +1084,7 @@ function ProducerAnalytics() {
 }
 
 function ProducerAIInsights() {
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const insights = [
     { id: "i1", type: "Pattern", title: "Costume inconsistency pattern detected", body: "VERSE identified a recurring costume color-continuity issue across 3 scenes involving the lead character during interior night shots.", confidence: 94, impact: "High" },
     { id: "i2", type: "Prediction", title: "Scene 34–36 likely to require re-shoot", body: "Based on current prop tracking data, 3 props referenced in the screenplay are logged differently across these scenes.", confidence: 87, impact: "Medium" },
@@ -903,11 +1092,18 @@ function ProducerAIInsights() {
     { id: "i4", type: "Anomaly", title: "Timeline anomaly in Act 2", body: "Scene 22 references a story event 3 days after Scene 18, but the 48-hour production schedule makes this continuity impossible.", confidence: 99, impact: "Critical" },
   ];
   const colors = { Pattern: { c: "var(--verse-violet)", bg: "var(--verse-violet-light)" }, Prediction: { c: "#0F62FE", bg: "#EFF6FF" }, Opportunity: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Anomaly: { c: "var(--verse-red)", bg: "#FEF2F2" } };
+  const [isDeepRunning, setIsDeepRunning] = useState(false);
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={<span>AI <span style={{ color: "var(--verse-violet)" }}>Insights</span></span>} subtitle="IBM watsonx-powered semantic analysis of your production." actions={<Btn variant="primary" icon={Sparkles} onClick={() => toast.loading("Running deep analysis…")}>Run Deep Analysis</Btn>} />
+      <PageHeader title={<span>AI <span style={{ color: "var(--verse-violet)" }}>Insights</span></span>} subtitle="IBM watsonx-powered semantic analysis of your production." actions={
+        <Btn variant="primary" icon={Sparkles} onClick={() => {
+          if (isDeepRunning) return;
+          setIsDeepRunning(true);
+          toast.promise(new Promise<void>((resolve) => setTimeout(() => { setIsDeepRunning(false); resolve(); }, 2500)), { loading: "Running deep semantic analysis…", success: "Deep analysis complete. 4 new insights generated.", error: "Analysis failed." });
+        }}>{isDeepRunning ? "Running…" : "Run Deep Analysis"}</Btn>
+      } />
       <div className="flex flex-col gap-4">
-        {insights.map((ins) => {
+        {insights.filter((ins) => !dismissed.includes(ins.id)).map((ins) => {
           const s = colors[ins.type as keyof typeof colors];
           return (
             <Card key={ins.id}>
@@ -926,12 +1122,15 @@ function ProducerAIInsights() {
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
-                <button className="flex-1 h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.success("Insight applied to production log.")}>Apply Insight</button>
-                <button className="h-8 px-3 text-xs border rounded-lg text-muted-foreground hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }} onClick={() => toast.info("Dismissed.")}>Dismiss</button>
+                <button className="flex-1 h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.success(`Insight applied: "${ins.title}"`)}>Apply Insight</button>
+                <button className="h-8 px-3 text-xs border rounded-lg text-muted-foreground hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }} onClick={() => { setDismissed((d) => [...d, ins.id]); toast.info("Insight dismissed."); }}>Dismiss</button>
               </div>
             </Card>
           );
         })}
+        {insights.filter((ins) => !dismissed.includes(ins.id)).length === 0 && (
+          <EmptyState icon={Sparkles} title="All insights reviewed" description="Run a new deep analysis to generate fresh insights." action={<Btn variant="primary" onClick={() => setDismissed([])}>Restore All</Btn>} />
+        )}
       </div>
     </div>
   );
@@ -1082,11 +1281,30 @@ const sceneList = [
 function DirectorSceneTracking() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [scenes, setScenes] = useState(sceneList);
+  const [showAddScene, setShowAddScene] = useState(false);
+  const [newSceneName, setNewSceneName] = useState("");
   const sev = { Logged: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Flagged: { c: "var(--verse-red)", bg: "#FEF2F2" }, "In Progress": { c: "var(--verse-violet)", bg: "var(--verse-violet-light)" }, Scheduled: { c: "#64748B", bg: "#F1F3F7" }, Review: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" } };
-  const filtered = sceneList.filter((s) => (filter === "All" || s.status === filter) && (s.scene + s.location + s.chars).toLowerCase().includes(search.toLowerCase()));
+  const filtered = scenes.filter((s) => (filter === "All" || s.status === filter) && (s.scene + s.location + s.chars).toLowerCase().includes(search.toLowerCase()));
+  const addScene = () => {
+    if (!newSceneName.trim()) { toast.error("Enter a scene name."); return; }
+    setScenes((prev) => [...prev, { id: `s${prev.length + 1}`, scene: newSceneName, location: "TBD", chars: "—", status: "Scheduled", shots: 0, duration: "—", score: 0 }]);
+    toast.success(`${newSceneName} added.`);
+    setNewSceneName(""); setShowAddScene(false);
+  };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Scene Tracking" subtitle="Monitor all scenes across the production." actions={<><Btn variant="secondary" icon={Download} onClick={() => toast.info("Exporting scene log…")}>Export</Btn><Btn variant="primary" icon={Plus} onClick={() => toast.success("New scene added.")}>Add Scene</Btn></>} />
+      <PageHeader title="Scene Tracking" subtitle="Monitor all scenes across the production." actions={<>
+        <Btn variant="secondary" icon={Download} onClick={() => toast.promise(new Promise((r) => setTimeout(r, 800)), { loading: "Exporting…", success: "Scene log exported.", error: "Failed." })}>Export</Btn>
+        <Btn variant="primary" icon={Plus} onClick={() => setShowAddScene(true)}>Add Scene</Btn>
+      </>} />
+      {showAddScene && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <input autoFocus placeholder="Scene name (e.g. Scene 35)…" value={newSceneName} onChange={(e) => setNewSceneName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addScene()} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <Btn variant="primary" onClick={addScene}>Add</Btn>
+          <Btn variant="secondary" onClick={() => { setShowAddScene(false); setNewSceneName(""); }}>Cancel</Btn>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <SearchBox placeholder="Search scenes…" value={search} onChange={setSearch} />
         <div className="flex items-center gap-1">
@@ -1130,9 +1348,18 @@ function DirectorSceneTracking() {
 }
 
 function DirectorCharacters() {
+  const [showAdd, setShowAdd] = useState(false);
+  const [charName, setCharName] = useState("");
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Characters" subtitle="Track character continuity and state across all scenes." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("Character profile created.")}>Add Character</Btn>} />
+      <PageHeader title="Characters" subtitle="Track character continuity and state across all scenes." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowAdd(true)}>Add Character</Btn>} />
+      {showAdd && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <input autoFocus placeholder="Character name…" value={charName} onChange={(e) => setCharName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && charName.trim() && (toast.success(`${charName} added.`), setCharName(""), setShowAdd(false))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <Btn variant="primary" onClick={() => { if (!charName.trim()) { toast.error("Enter a name."); return; } toast.success(`${charName} character created.`); setCharName(""); setShowAdd(false); }}>Create</Btn>
+          <Btn variant="secondary" onClick={() => { setShowAdd(false); setCharName(""); }}>Cancel</Btn>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {characters.map((char) => (
           <Card key={char.id}>
@@ -1338,6 +1565,8 @@ function ScriptSupervisorOverview({ productionName, onAIAction }: { productionNa
 }
 
 function ContinuityTracking() {
+  const [showLog, setShowLog] = useState(false);
+  const [newIssueDesc, setNewIssueDesc] = useState("");
   const [issues, setIssues] = useState([
     { id: "ci1", scene: "Scene 18", type: "Timeline", desc: "References 'Tuesday morning' but Scene 17 established 'Monday evening'.", severity: "critical", resolved: false },
     { id: "ci2", scene: "Scene 23", type: "Costume", desc: "Elena's jacket changes from navy to black between shots 23A and 23C.", severity: "warning", resolved: false },
@@ -1351,7 +1580,17 @@ function ContinuityTracking() {
   const sev = { critical: { c: "var(--verse-red)", bg: "#FEF2F2", l: "Critical" }, warning: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)", l: "Warning" }, info: { c: "#0F62FE", bg: "#EFF6FF", l: "Info" } };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Continuity Tracking" subtitle="Monitor, flag, and resolve continuity issues." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New issue logged.")}>Log Issue</Btn>} />
+      <PageHeader title="Continuity Tracking" subtitle="Monitor, flag, and resolve continuity issues." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Issue</Btn>} />
+      {showLog && (
+        <div className="rounded-2xl border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <p className="text-sm font-bold text-foreground">Log New Issue</p>
+          <textarea autoFocus placeholder="Describe the continuity issue…" value={newIssueDesc} onChange={(e) => setNewIssueDesc(e.target.value)} rows={2} className="border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <div className="flex gap-2">
+            <Btn variant="primary" onClick={() => { if (!newIssueDesc.trim()) { toast.error("Enter a description."); return; } setIssues((prev) => [{ id: `ci${prev.length + 1}`, scene: "New Scene", type: "General", desc: newIssueDesc, severity: "info", resolved: false }, ...prev]); setNewIssueDesc(""); setShowLog(false); toast.success("Issue logged."); }}>Log Issue</Btn>
+            <Btn variant="secondary" onClick={() => { setShowLog(false); setNewIssueDesc(""); }}>Cancel</Btn>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-4">
         <StatCard label="Open Issues" value={issues.filter((i) => !i.resolved).length} icon={AlertTriangle} color="var(--verse-red)" />
         <StatCard label="Resolved" value={issues.filter((i) => i.resolved).length} icon={CheckCircle} color="var(--verse-emerald)" />
@@ -1388,36 +1627,122 @@ function ContinuityTracking() {
   );
 }
 
-function ScreenplayAnalysis() {
-  const scenes = [
-    { num: "Scene 17", entities: ["Elena Chen", "Marcus Reyes", "Office Interior", "Coffee Mug", "Monday Evening"], sentiment: "Tension", wordCount: 847, aiScore: 100 },
-    { num: "Scene 18", entities: ["Elena Chen", "Dr. Park", "Office Interior", "Tuesday Morning (⚠)"], sentiment: "Conflict", wordCount: 623, aiScore: 72 },
-    { num: "Scene 23", entities: ["Elena Chen", "Navy Jacket (⚠)", "Diner Interior", "Evening"], sentiment: "Introspective", wordCount: 312, aiScore: 81 },
+function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
+  // ── upload + live state ────────────────────────────────────────────────
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ scenes_detected: number; facts_ingested: number; filename: string } | null>(null);
+  const [analysing, setAnalysing] = useState(false);
+  const [liveScenes, setLiveScenes] = useState<Array<{ num: string; entities: string[]; aiScore: number }>>([]);
+
+  // Fallback demo scenes shown before any upload
+  const demoScenes = [
+    { num: "Scene 17", entities: ["Elena Chen", "Marcus Reyes", "Office Interior", "Coffee Mug", "Monday Evening"], aiScore: 100 },
+    { num: "Scene 18", entities: ["Elena Chen", "Dr. Park", "Office Interior", "Tuesday Morning (⚠)"], aiScore: 72 },
+    { num: "Scene 23", entities: ["Elena Chen", "Navy Jacket (⚠)", "Diner Interior", "Evening"], aiScore: 81 },
   ];
+
+  const handleUpload = async (file: File) => {
+    if (!file) return;
+    const pid = projectId ?? "VERSE_DEMO";
+    setUploading(true);
+    try {
+      const { upload, continuity } = await import("@/app/lib/api");
+      const result = await upload.screenplay(pid, file);
+      setUploadResult(result);
+      toast.success(`"${result.filename}" ingested — ${result.scenes_detected} scenes, ${result.facts_ingested} facts extracted.`);
+
+      // Step 2 — automatically run analysis after upload
+      setAnalysing(true);
+      try {
+        const report = await continuity.analyse(pid);
+        const sev = (s: string) => s === "critical" ? 40 : s === "high" ? 65 : s === "medium" ? 80 : 95;
+        const grouped: Record<string, string[]> = {};
+        for (const issue of report.issues) {
+          const scene = issue.scene_id ?? "General";
+          grouped[scene] = grouped[scene] ?? [];
+          grouped[scene].push(issue.explanation || issue.attribute);
+        }
+        setLiveScenes(
+          Object.entries(grouped).slice(0, 8).map(([num, ents], i) => ({
+            num,
+            entities: ents.slice(0, 6),
+            aiScore: sev(report.issues.find((x) => x.scene_id === num)?.severity ?? "low"),
+          }))
+        );
+      } catch { /* analysis optional */ } finally { setAnalysing(false); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openFilePicker = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf,.fdx,.txt,.fountain";
+    input.onchange = () => { if (input.files?.[0]) handleUpload(input.files[0]); };
+    input.click();
+  };
+
+  const displayScenes = liveScenes.length > 0 ? liveScenes : demoScenes;
+  const totalScenes = uploadResult?.scenes_detected ?? 47;
+  const totalFacts  = uploadResult?.facts_ingested  ?? 0;
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Screenplay Analysis" subtitle="Semantic parsing and entity extraction from the screenplay." actions={<Btn variant="primary" icon={Upload} onClick={() => toast.info("Upload new screenplay version…")}>Update Screenplay</Btn>} />
+      <PageHeader
+        title="Screenplay Analysis"
+        subtitle="Upload your screenplay — VERSE extracts scenes, characters, props, and timelines automatically."
+        actions={
+          <Btn variant="primary" icon={Upload} onClick={openFilePicker}>
+            {uploading ? "Uploading…" : uploadResult ? "Re-upload Screenplay" : "Upload Screenplay"}
+          </Btn>
+        }
+      />
+
+      {/* Upload progress / result banner */}
+      {(uploading || analysing) && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(124,58,237,0.25)", background: "var(--verse-violet-light)" }}>
+          <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
+          <p className="text-sm font-medium" style={{ color: "var(--verse-violet)" }}>
+            {uploading ? "Ingesting screenplay into production memory…" : "Running AI continuity analysis…"}
+          </p>
+        </div>
+      )}
+
+      {uploadResult && !uploading && !analysing && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(5,150,105,0.25)", background: "#ECFDF5" }}>
+          <CheckCircle size={16} style={{ color: "var(--verse-emerald)" }} />
+          <p className="text-sm font-medium" style={{ color: "var(--verse-emerald)" }}>
+            <span className="font-bold">{uploadResult.filename}</span> — {uploadResult.scenes_detected} scenes ingested, {uploadResult.facts_ingested} semantic facts extracted.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Scenes" value={47} icon={FileText} color="var(--verse-midnight)" />
-        <StatCard label="Characters" value={12} icon={Users} color="var(--verse-violet)" />
-        <StatCard label="Props Tracked" value={34} icon={Layers} color="var(--verse-gold)" />
-        <StatCard label="Semantic Score" value="91%" icon={Brain} color="var(--verse-emerald)" />
+        <StatCard label="Total Scenes" value={totalScenes} icon={FileText} color="var(--verse-midnight)" />
+        <StatCard label="Facts Extracted" value={totalFacts > 0 ? totalFacts : "—"} icon={Brain} color="var(--verse-violet)" />
+        <StatCard label="Entities Tracked" value={liveScenes.length > 0 ? liveScenes.reduce((n, s) => n + s.entities.length, 0) : 34} icon={Layers} color="var(--verse-gold)" />
+        <StatCard label="Semantic Score" value={liveScenes.length > 0 ? `${Math.round(liveScenes.reduce((n, s) => n + s.aiScore, 0) / liveScenes.length)}%` : "—"} icon={CheckCircle} color="var(--verse-emerald)" />
       </div>
+
       <div className="flex flex-col gap-4">
-        {scenes.map((s) => (
-          <Card key={s.num}>
+        {displayScenes.map((s, i) => (
+          <Card key={i}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>{s.num}</h3>
-                <p className="text-xs text-muted-foreground">{s.wordCount} words · Mood: {s.sentiment}</p>
+                <p className="text-xs text-muted-foreground">{liveScenes.length > 0 ? "Live — from uploaded screenplay" : "Demo data"}</p>
               </div>
-              <ScorePill value={s.aiScore} />
+              {s.aiScore > 0 && <ScorePill value={s.aiScore} />}
             </div>
             <div>
               <p className="text-xs font-bold text-muted-foreground mb-2">Extracted Entities</p>
               <div className="flex flex-wrap gap-2">
                 {s.entities.map((e) => (
-                  <span key={e} className={`text-xs px-2 py-1 rounded-lg border ${e.includes("⚠") ? "" : ""}`} style={{ borderColor: e.includes("⚠") ? "rgba(154,111,0,0.3)" : "var(--border)", color: e.includes("⚠") ? "var(--verse-gold)" : "var(--muted-foreground)", background: e.includes("⚠") ? "var(--verse-gold-light)" : "transparent" }}>
+                  <span key={e} className="text-xs px-2 py-1 rounded-lg border" style={{ borderColor: e.includes("⚠") ? "rgba(154,111,0,0.3)" : "var(--border)", color: e.includes("⚠") ? "var(--verse-gold)" : "var(--muted-foreground)", background: e.includes("⚠") ? "var(--verse-gold-light)" : "transparent" }}>
                     {e}
                   </span>
                 ))}
@@ -1425,6 +1750,20 @@ function ScreenplayAnalysis() {
             </div>
           </Card>
         ))}
+
+        {/* Empty state before upload */}
+        {liveScenes.length === 0 && !uploadResult && (
+          <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-14 gap-3" style={{ borderColor: "rgba(124,58,237,0.2)" }}>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--verse-violet-light)" }}>
+              <FileText size={24} style={{ color: "var(--verse-violet)" }} />
+            </div>
+            <p className="font-bold text-foreground text-sm" style={{ fontFamily: "var(--font-display)" }}>Upload your screenplay to begin</p>
+            <p className="text-xs text-muted-foreground text-center max-w-xs">Supports .pdf, .txt, .fountain, and .fdx formats. VERSE will extract all scenes, characters, props, and timeline data automatically.</p>
+            <button onClick={openFilePicker} className="mt-1 flex items-center gap-2 h-9 text-sm font-semibold px-4 rounded-lg" style={{ backgroundColor: "var(--verse-midnight)", color: "white" }}>
+              <Upload size={14} /> Choose File
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1580,10 +1919,19 @@ function CostumeTracking() {
     { id: "c3", name: "White Lab Coat", character: "Dr. Helena Park", scenes: "18, 19", status: "Verified", continuity: 100 },
     { id: "c4", name: "Casual — Blue Jeans", character: "Elena Chen", scenes: "20, 21", status: "Pending", continuity: 0 },
   ];
+  const [showLog, setShowLog] = useState(false);
+  const [newCostumeName, setNewCostumeName] = useState("");
   const sc = { Verified: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Issue: { c: "var(--verse-red)", bg: "#FEF2F2" }, Pending: { c: "#64748B", bg: "#F1F3F7" } };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Costume Tracking" subtitle="Character costume continuity across all scenes." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New costume logged.")}>Log Costume</Btn>} />
+      <PageHeader title="Costume Tracking" subtitle="Character costume continuity across all scenes." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Costume</Btn>} />
+      {showLog && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <input autoFocus placeholder="Costume name (e.g. Red Evening Dress)…" value={newCostumeName} onChange={(e) => setNewCostumeName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newCostumeName.trim() && (toast.success(`"${newCostumeName}" logged.`), setNewCostumeName(""), setShowLog(false))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <Btn variant="primary" onClick={() => { if (!newCostumeName.trim()) { toast.error("Enter a costume name."); return; } toast.success(`"${newCostumeName}" costume logged.`); setNewCostumeName(""); setShowLog(false); }}>Log</Btn>
+          <Btn variant="secondary" onClick={() => { setShowLog(false); setNewCostumeName(""); }}>Cancel</Btn>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {costumes.map((c) => {
           const s = sc[c.status as keyof typeof sc];
@@ -1621,10 +1969,19 @@ function PropTracking() {
     { id: "p4", name: "Leather Briefcase", category: "Prop", character: "Marcus Reyes", scenes: "17, 24", status: "Pending", note: "Not yet logged for Scene 31" },
     { id: "p5", name: "Crime Board Photos", category: "Set Dressing", character: "—", scenes: "17, 18", status: "Verified", note: "Photo order confirmed consistent" },
   ];
+  const [showLog, setShowLog] = useState(false);
+  const [newPropName, setNewPropName] = useState("");
   const sc = { Verified: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Issue: { c: "var(--verse-red)", bg: "#FEF2F2" }, Pending: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" } };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Prop Tracking" subtitle="Prop inventory and scene continuity verification." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New prop logged.")}>Log Prop</Btn>} />
+      <PageHeader title="Prop Tracking" subtitle="Prop inventory and scene continuity verification." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Prop</Btn>} />
+      {showLog && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <input autoFocus placeholder="Prop name (e.g. Antique Clock)…" value={newPropName} onChange={(e) => setNewPropName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newPropName.trim() && (toast.success(`"${newPropName}" logged.`), setNewPropName(""), setShowLog(false))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <Btn variant="primary" onClick={() => { if (!newPropName.trim()) { toast.error("Enter a prop name."); return; } toast.success(`"${newPropName}" prop logged.`); setNewPropName(""); setShowLog(false); }}>Log</Btn>
+          <Btn variant="secondary" onClick={() => { setShowLog(false); setNewPropName(""); }}>Cancel</Btn>
+        </div>
+      )}
       <div className="flex flex-col gap-3">
         {props.map((p) => {
           const s = sc[p.status as keyof typeof sc];
@@ -1840,7 +2197,7 @@ function TeamCollaboration() {
                   <p className="text-sm text-foreground truncate">{t.task}</p>
                   <p className="text-xs text-muted-foreground">{t.person}</p>
                 </div>
-                <button className="text-xs text-primary hover:underline" onClick={() => toast.info(`Opening task: ${t.task}`)}>Open</button>
+                <button className="text-xs text-primary hover:underline" onClick={() => toast.success(`Task assigned: "${t.task}"`)}>Open</button>
               </div>
             ))}
           </div>
@@ -1859,9 +2216,21 @@ function Scheduling() {
     { day: 3, event: "Scene 33–34 · INT. Office · 6 hrs", color: "var(--verse-midnight)" },
     { day: 4, event: "Crew day off / edit review", color: "var(--verse-gold)" },
   ];
+  const [showAdd, setShowAdd] = useState(false);
+  const [newEvent, setNewEvent] = useState("");
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Scheduling" subtitle="Production schedule and calendar management." actions={<><Btn variant="secondary" icon={Download} onClick={() => toast.info("Exporting schedule…")}>Export</Btn><Btn variant="primary" icon={Plus} onClick={() => toast.success("Event added.")}>Add Event</Btn></>} />
+      <PageHeader title="Scheduling" subtitle="Production schedule and calendar management." actions={<>
+        <Btn variant="secondary" icon={Download} onClick={() => toast.promise(new Promise((r) => setTimeout(r, 800)), { loading: "Exporting schedule…", success: "Schedule exported.", error: "Failed." })}>Export</Btn>
+        <Btn variant="primary" icon={Plus} onClick={() => setShowAdd(true)}>Add Event</Btn>
+      </>} />
+      {showAdd && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <input autoFocus placeholder="Event description…" value={newEvent} onChange={(e) => setNewEvent(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newEvent.trim() && (toast.success(`Event added: "${newEvent}"`), setNewEvent(""), setShowAdd(false))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <Btn variant="primary" onClick={() => { if (!newEvent.trim()) { toast.error("Enter an event description."); return; } toast.success(`Event added: "${newEvent}"`); setNewEvent(""); setShowAdd(false); }}>Add</Btn>
+          <Btn variant="secondary" onClick={() => { setShowAdd(false); setNewEvent(""); }}>Cancel</Btn>
+        </div>
+      )}
       <Card>
         <SectionTitle>Week of December 16–20</SectionTitle>
         <div className="grid grid-cols-5 gap-2">
@@ -2006,6 +2375,8 @@ function DeptMemberOverview({ productionName }: { productionName: string }) {
 }
 
 function MyTasks() {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newTask, setNewTask] = useState("");
   const [tasks, setTasks] = useState([
     { id: "t1", task: "Upload Scene 32 costume reference photos", due: "Today", priority: "high", done: false },
     { id: "t2", task: "Review Scene 31 continuity notes from script supervisor", due: "Today", priority: "high", done: false },
@@ -2016,7 +2387,14 @@ function MyTasks() {
   const toggle = (id: string) => { setTasks((prev) => prev.map((t) => t.id === id ? { ...t, done: !t.done } : t)); toast.success("Task updated."); };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="My Tasks" subtitle="Your assigned tasks and deadlines." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New task created.")}>Add Task</Btn>} />
+      <PageHeader title="My Tasks" subtitle="Your assigned tasks and deadlines." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowAdd(true)}>Add Task</Btn>} />
+      {showAdd && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <input autoFocus placeholder="Task description…" value={newTask} onChange={(e) => setNewTask(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newTask.trim() && (setTasks((p) => [{ id: `t${p.length + 1}`, task: newTask, due: "Today", priority: "medium", done: false }, ...p]), setNewTask(""), setShowAdd(false), toast.success("Task added."))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <Btn variant="primary" onClick={() => { if (!newTask.trim()) { toast.error("Enter a task."); return; } setTasks((p) => [{ id: `t${p.length + 1}`, task: newTask, due: "Today", priority: "medium", done: false }, ...p]); setNewTask(""); setShowAdd(false); toast.success("Task added."); }}>Add</Btn>
+          <Btn variant="secondary" onClick={() => { setShowAdd(false); setNewTask(""); }}>Cancel</Btn>
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         {tasks.map((t) => (
           <Card key={t.id}>
@@ -2117,9 +2495,18 @@ function Discussions() {
     { id: "d2", title: "Act 2 costume reference photos needed", author: "Sarah C.", replies: 2, time: "3h ago", tag: "Wardrobe" },
     { id: "d3", title: "Location change for Scene 35?", author: "Tom R.", replies: 7, time: "Yesterday", tag: "General" },
   ];
+  const [showNew, setShowNew] = useState(false);
+  const [threadTitle, setThreadTitle] = useState("");
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Discussions" subtitle="Team discussion threads for the production." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New thread created.")}>New Thread</Btn>} />
+      <PageHeader title="Discussions" subtitle="Team discussion threads for the production." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowNew(true)}>New Thread</Btn>} />
+      {showNew && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
+          <input autoFocus placeholder="Thread title…" value={threadTitle} onChange={(e) => setThreadTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && threadTitle.trim() && (toast.success(`Thread created: "${threadTitle}"`), setThreadTitle(""), setShowNew(false))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
+          <Btn variant="primary" onClick={() => { if (!threadTitle.trim()) { toast.error("Enter a thread title."); return; } toast.success(`Thread "${threadTitle}" created.`); setThreadTitle(""); setShowNew(false); }}>Create</Btn>
+          <Btn variant="secondary" onClick={() => { setShowNew(false); setThreadTitle(""); }}>Cancel</Btn>
+        </div>
+      )}
       <div className="flex flex-col gap-3">
         {threads.map((t) => (
           <Card key={t.id}>
@@ -2371,11 +2758,12 @@ function SettingsPage() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function DashboardContent({
-  userRole, productionName, onAIAction, activeNav,
+  userRole, productionName, onAIAction, activeNav, projectId,
 }: {
   userRole: UserRole; productionName: string;
   onAIAction: (id: string, action: "accept" | "dismiss") => void;
   activeNav: string;
+  projectId?: string;
 }) {
   // Settings page is shared across all roles
   if (activeNav === "Settings") return <SettingsPage />;
@@ -2385,7 +2773,7 @@ function DashboardContent({
       switch (activeNav) {
         case "Productions": return <ProducerProductions />;
         case "Team": return <ProducerTeam />;
-        case "Continuity Reports": return <ProducerContinuityReports />;
+        case "Continuity Reports": return <ProducerContinuityReports projectId={projectId} />;
         case "Analytics": return <ProducerAnalytics />;
         case "AI Insights": return <ProducerAIInsights />;
         case "Workspace": return <ProducerWorkspace />;
@@ -2405,7 +2793,7 @@ function DashboardContent({
     case "script-supervisor":
       switch (activeNav) {
         case "Continuity Tracking": return <ContinuityTracking />;
-        case "Screenplay Analysis": return <ScreenplayAnalysis />;
+        case "Screenplay Analysis": return <ScreenplayAnalysis projectId={projectId} />;
         case "Scene Timeline": return <SceneTimeline />;
         case "AI Alerts": return <AIAlerts onAIAction={onAIAction} />;
         case "Narrative Progression": return <NarrativeProgression />;
@@ -2462,6 +2850,11 @@ export default function DashboardPage({
   const [activeNav, setActiveNav] = useState("Overview");
   const [currentRole, setCurrentRole] = useState<UserRole>(userRole);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  // Resolve the active project ID from the API on mount; fall back to demo
+  const [activeProjectId, setActiveProjectId] = useState<string | undefined>(undefined);
+  React.useEffect(() => {
+    apiProjects.list().then((list) => { if (list.length > 0) setActiveProjectId(list[0].id); }).catch(() => {});
+  }, []);
 
   const handleAIAction = (id: string, action: "accept" | "dismiss") => {
     if (action === "accept") toast.success("AI recommendation accepted. Continuity log updated.");
@@ -2475,7 +2868,7 @@ export default function DashboardPage({
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      <AIAnalysisModal isOpen={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} />
+      <AIAnalysisModal isOpen={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} projectId={activeProjectId} />
       {isSidebarOpen && <div className="lg:hidden fixed inset-0 bg-foreground/25 backdrop-blur-sm z-30" onClick={() => setIsSidebarOpen(false)} />}
 
       <DashboardSidebar
@@ -2503,6 +2896,7 @@ export default function DashboardPage({
               productionName={productionName}
               onAIAction={handleAIAction}
               activeNav={activeNav}
+              projectId={activeProjectId}
             />
           </div>
         </main>

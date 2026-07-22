@@ -12,6 +12,7 @@ import { SignInPage, CreateAccountPage, ForgotPasswordPage, EmailVerificationPag
 import { RoleSelectionPage, ProductionTypePage, CreateWorkspacePage } from "@/app/pages/OnboardingPages";
 import DashboardPage from "@/app/pages/DashboardPage";
 import { type UserRole, type ProductionType, userRoles } from "@/app/data/mockData";
+import { TokenStore, UserStore } from "@/app/lib/api";
 
 // ─── View Types ────────────────────────────────────────────────────────────────
 
@@ -44,9 +45,37 @@ function resolveRoleFromLabel(roleLabel?: string): UserRole | null {
 // ─── App Component ─────────────────────────────────────────────────────────────
 
 export default function App() {
-  // Attempt to restore session from sessionStorage on first load.
-  // This keeps the user logged in if they accidentally refresh during a demo.
+  // Attempt to restore session on first load.
+  // Priority: real JWT user from localStorage → sessionStorage demo state → landing.
   const getInitialState = (): AppState => {
+    // 1. Real authenticated user (JWT present + stored user object)
+    const token = TokenStore.get();
+    const apiUser = UserStore.get();
+    if (token && apiUser) {
+      const resolvedRole = resolveRoleFromLabel(apiUser.role) ?? "producer";
+      // Try to restore sessionStorage position; else go to dashboard
+      try {
+        const stored = sessionStorage.getItem("verse_session");
+        if (stored) {
+          const parsed: AppState = JSON.parse(stored);
+          // Only restore if still on dashboard/onboarding (not landing/auth)
+          const restorableViews: AppView[] = ["dashboard", "role-selection", "production-type", "create-workspace"];
+          if (restorableViews.includes(parsed.currentView)) {
+            return { ...parsed, selectedRole: parsed.selectedRole ?? resolvedRole, userName: apiUser.name, userEmail: apiUser.email };
+          }
+        }
+      } catch { /* ignore */ }
+      return {
+        currentView: "dashboard",
+        userEmail: apiUser.email,
+        userName: apiUser.name,
+        selectedRole: resolvedRole,
+        selectedProductionType: null,
+        productionName: "The Last Scene",
+      };
+    }
+
+    // 2. Demo/sessionStorage session
     try {
       const stored = sessionStorage.getItem("verse_session");
       if (stored) return JSON.parse(stored);
@@ -172,7 +201,8 @@ export default function App() {
             productionName={appState.productionName || "The Last Scene"}
             userName={appState.userName}
             onSignOut={() => {
-              // Clear the saved session so the next visit starts fresh
+              // Clear JWT token + stored user and the demo session
+              TokenStore.clear();
               try { sessionStorage.removeItem("verse_session"); } catch {}
               navigateTo("landing", {
                 selectedRole: null,

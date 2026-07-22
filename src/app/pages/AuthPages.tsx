@@ -2,8 +2,9 @@
 // Sign In, Create Account, Forgot Password, Email Verification.
 // Sign In includes a prominent Demo Accounts panel for one-click role-based access.
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { auth, TokenStore, UserStore } from "@/app/lib/api";
 import {
   Eye, EyeOff, ArrowLeft, Mail, Lock, User, Building2,
   CheckCircle, ArrowRight, Zap, ChevronDown, ChevronUp,
@@ -275,32 +276,50 @@ export function SignInPage({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Handles standard sign-in with loading simulation
-  const handleSignIn = () => {
-    if (!email || !password) {
-      toast.error("Please enter your email and password.");
-      return;
-    }
+  // Real sign-in — tries API first, falls back to demo flow if backend offline
+  const handleSignIn = async () => {
+    if (!email || !password) { toast.error("Please enter your email and password."); return; }
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await auth.login(email, password);
+      TokenStore.set(res.access_token);
+      UserStore.set(res.user);
+      toast.success(`Welcome back, ${res.user.name}!`);
+      onSignIn(res.user.role);
+    } catch (err: unknown) {
+      // Backend offline — fall through to demo mode
+      if (err instanceof Error && err.message.includes("fetch")) {
+        toast.success("Welcome back to VERSE! (demo mode)");
+        onSignIn();
+      } else {
+        toast.error(err instanceof Error ? err.message : "Sign in failed.");
+      }
+    } finally {
       setIsLoading(false);
-      toast.success("Welcome back to VERSE!");
-      onSignIn();
-    }, 1200);
+    }
   };
 
-  // One-click demo login — autofills credentials and immediately logs in
-  const handleDemoLogin = (demoEmail: string, demoPassword: string, role: string) => {
+  // One-click demo login — tries real auth first, falls back gracefully
+  const handleDemoLogin = async (demoEmail: string, demoPassword: string, role: string) => {
     setEmail(demoEmail);
     setPassword(demoPassword);
     setIsLoading(true);
     toast.loading(`Signing in as ${role}…`);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const res = await auth.login(demoEmail, demoPassword);
+      TokenStore.set(res.access_token);
+      UserStore.set(res.user);
+      toast.dismiss();
+      toast.success(`Welcome, ${res.user.name || role}! Your workspace is ready.`);
+      onSignIn(res.user.role || role);
+    } catch {
+      // Backend not running — use demo flow
       toast.dismiss();
       toast.success(`Welcome, ${role}! Your demo workspace is ready.`);
       onSignIn(role);
-    }, 1400);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -421,21 +440,32 @@ export function CreateAccountPage({
   const [productionCompany, setProductionCompany] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleCreateAccount = () => {
-    if (!firstName || !email || !password) {
-      toast.error("Please fill in all required fields.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      toast.error("Passwords do not match.");
-      return;
-    }
+  const handleCreateAccount = async () => {
+    if (!firstName || !email || !password) { toast.error("Please fill in all required fields."); return; }
+    if (password !== confirmPassword) { toast.error("Passwords do not match."); return; }
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      const res = await auth.register({
+        email,
+        password,
+        name: [firstName, lastName].filter(Boolean).join(" "),
+        organization: organizationName || productionCompany,
+      });
+      TokenStore.set(res.access_token);
+      UserStore.set(res.user);
       toast.success("Account created! Please verify your email.");
       onAccountCreated();
-    }, 1400);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("fetch")) {
+        // Backend not running — demo mode
+        toast.success("Account created! Please verify your email.");
+        onAccountCreated();
+      } else {
+        toast.error(err instanceof Error ? err.message : "Registration failed.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -514,6 +544,7 @@ export function CreateAccountPage({
 }
 
 // ─── Forgot Password Page ──────────────────────────────────────────────────────
+// Two-step flow: (1) send OTP to email, (2) submit OTP + new password.
 
 export function ForgotPasswordPage({
   onBack,
@@ -523,25 +554,52 @@ export function ForgotPasswordPage({
   onEmailSent: () => void;
 }) {
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [step, setStep] = useState<"request" | "reset">("request");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSendReset = () => {
-    if (!email) {
-      toast.error("Please enter your email address.");
-      return;
-    }
+  // Step 1 — request OTP
+  const handleSendReset = async () => {
+    if (!email) { toast.error("Please enter your email address."); return; }
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await auth.forgotPassword(email);
+      if (res.dev_token) {
+        setOtp(res.dev_token);
+        toast.info(`Dev mode: OTP pre-filled (${res.dev_token})`);
+      } else {
+        toast.success("Reset code sent! Check your inbox.");
+      }
+      setStep("reset");
+    } catch {
+      // Backend offline — demo mode
+      toast.success("Reset code sent! (demo mode)");
+      setStep("reset");
+    } finally {
       setIsLoading(false);
-      toast.success("Password reset link sent! Check your inbox.");
+    }
+  };
+
+  // Step 2 — submit OTP + new password
+  const handleResetPassword = async () => {
+    if (!otp || !newPassword) { toast.error("Please enter the reset code and your new password."); return; }
+    setIsLoading(true);
+    try {
+      await auth.resetPassword(email, otp, newPassword);
+      toast.success("Password updated! Please sign in.");
       onEmailSent();
-    }, 1200);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reset failed. Check your code and try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <AuthLayout
       headline="Reset your password."
-      subtext="We'll send a secure password reset link to your registered email address."
+      subtext="Enter your email to receive a 6-digit reset code, then set a new password."
     >
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-8 transition-colors">
         <ArrowLeft size={15} /> Back to Sign In
@@ -555,27 +613,49 @@ export function ForgotPasswordPage({
         <h1 className="text-3xl font-black text-foreground mb-1.5" style={{ fontFamily: "var(--font-display)" }}>
           Forgot Password
         </h1>
-        <p className="text-muted-foreground text-sm">Enter your email and we'll send you a reset link.</p>
+        <p className="text-muted-foreground text-sm">
+          {step === "request"
+            ? "Enter your email and we'll send you a 6-digit reset code."
+            : "Enter the code you received and choose a new password."}
+        </p>
       </div>
 
-      <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); handleSendReset(); }}>
-        <FormInput label="Email Address" type="email" placeholder="you@studio.com" value={email} onChange={setEmail} icon={Mail} required />
-        <button
-          type="submit" disabled={isLoading}
-          className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-all flex items-center justify-center gap-2"
-        >
-          {isLoading ? (
-            <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending…</>
-          ) : (
-            <>Send Reset Link <ArrowRight size={15} /></>
-          )}
-        </button>
-      </form>
+      {step === "request" ? (
+        <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); handleSendReset(); }}>
+          <FormInput label="Email Address" type="email" placeholder="you@studio.com" value={email} onChange={setEmail} icon={Mail} required />
+          <button
+            type="submit" disabled={isLoading}
+            className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-all flex items-center justify-center gap-2"
+          >
+            {isLoading
+              ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending…</>
+              : <>Send Reset Code <ArrowRight size={15} /></>}
+          </button>
+        </form>
+      ) : (
+        <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); handleResetPassword(); }}>
+          <FormInput label="Reset Code" placeholder="6-digit code" value={otp} onChange={setOtp} icon={CheckCircle} required />
+          <FormInput label="New Password" type="password" placeholder="New password (min 6 chars)" value={newPassword} onChange={setNewPassword} icon={Lock} required />
+          <button
+            type="submit" disabled={isLoading}
+            className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-all flex items-center justify-center gap-2"
+          >
+            {isLoading
+              ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Updating…</>
+              : <>Reset Password <ArrowRight size={15} /></>}
+          </button>
+          <button type="button" onClick={() => setStep("request")}
+            className="text-xs text-muted-foreground hover:text-foreground text-center transition-colors">
+            ← Send a new code
+          </button>
+        </form>
+      )}
     </AuthLayout>
   );
 }
 
 // ─── Email Verification Page ───────────────────────────────────────────────────
+// Requests an OTP on mount, then accepts a 6-digit code to verify the account.
 
 export function EmailVerificationPage({
   email,
@@ -584,15 +664,49 @@ export function EmailVerificationPage({
   email?: string;
   onVerified: () => void;
 }) {
+  const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
-  const handleVerify = () => {
+  // Request OTP as soon as the page mounts (and on resend)
+  const requestOtp = async () => {
+    setIsSending(true);
+    try {
+      const res = await auth.requestEmailVerification();
+      if (res.dev_token) {
+        setOtp(res.dev_token);
+        toast.info(`Dev mode: OTP pre-filled (${res.dev_token})`);
+      } else {
+        toast.success("Verification code sent! Check your inbox.");
+      }
+    } catch {
+      // Backend offline — skip silently; demo mode bypasses verification
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Request OTP on first mount
+  useEffect(() => { requestOtp(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleVerify = async () => {
+    if (!otp) { toast.error("Please enter the verification code."); return; }
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      await auth.verifyEmail(otp);
       toast.success("Email verified! Let's set up your workspace.");
       onVerified();
-    }, 1000);
+    } catch (err) {
+      // Backend offline → demo mode continues
+      if (err instanceof Error && err.message.includes("fetch")) {
+        toast.success("Email verified! Let's set up your workspace.");
+        onVerified();
+      } else {
+        toast.error(err instanceof Error ? err.message : "Invalid code. Please try again.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -610,43 +724,39 @@ export function EmailVerificationPage({
           Check your email
         </h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          We sent a verification link to{" "}
+          We sent a 6-digit verification code to{" "}
           <span className="font-semibold text-foreground">{email || "your email address"}</span>.
-          Click the link in the email to verify your account.
+          Enter it below to verify your account.
         </p>
       </div>
 
-      <div className="bg-muted rounded-xl p-5 mb-6 flex flex-col gap-3">
-        {[
-          { step: "1", text: "Open your email inbox" },
-          { step: "2", text: "Find the email from VERSE" },
-          { step: "3", text: "Click the verification link" },
-        ].map((item) => (
-          <div key={item.step} className="flex items-center gap-3">
-            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center flex-shrink-0">
-              {item.step}
-            </div>
-            <span className="text-sm text-foreground">{item.text}</span>
-          </div>
-        ))}
-      </div>
+      <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); handleVerify(); }}>
+        <FormInput
+          label="Verification Code"
+          placeholder="6-digit code"
+          value={otp}
+          onChange={setOtp}
+          icon={CheckCircle}
+          required
+        />
+        <button
+          type="submit" disabled={isLoading}
+          className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-all flex items-center justify-center gap-2"
+        >
+          {isLoading
+            ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verifying…</>
+            : <>Verify Email <ArrowRight size={15} /></>}
+        </button>
+      </form>
 
-      <button
-        onClick={handleVerify} disabled={isLoading}
-        className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-all flex items-center justify-center gap-2 mb-4"
-      >
-        {isLoading ? (
-          <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verifying…</>
-        ) : (
-          <>I've Verified My Email <ArrowRight size={15} /></>
-        )}
-      </button>
-
-      <p className="text-xs text-muted-foreground text-center">
+      <p className="text-xs text-muted-foreground text-center mt-5">
         Didn't receive it?{" "}
-        <button onClick={() => toast.success("Verification email resent!")}
-          className="text-primary hover:underline font-medium">
-          Resend email
+        <button
+          onClick={requestOtp}
+          disabled={isSending}
+          className="text-primary hover:underline font-medium disabled:opacity-50"
+        >
+          {isSending ? "Sending…" : "Resend code"}
         </button>
       </p>
     </AuthLayout>
