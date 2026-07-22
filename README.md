@@ -1,19 +1,24 @@
+<div align="center">
+
+<img src="src/imports/VERSE_LOGO_2.png" alt="VERSE Logo" width="360">
+
 # VERSE
 
-<p align="center">
-  <img src="src/imports/VERSE_LOGO_2.png" alt="VERSE Logo" width="220">
-</p>
+### **Visual & Explainable Reasoning for Semantic Evolution**
 
-<h3 align="center">Visual & Explainable Reasoning for Semantic Evolution</h3>
+**AI-Powered Semantic Continuity and Production Intelligence for Intelligent Filmmaking**
 
-<p align="center">
-  <strong>AI-Powered Semantic Continuity and Production Intelligence for Intelligent Filmmaking</strong>
-</p>
+*"Every story lives in its own VERSE."*
 
-<p align="center">
-  <em>"Every story lives in its own VERSE."</em>
-</p>
----
+<br>
+
+![IBM](https://img.shields.io/badge/IBM-watsonx-1261FE?style=for-the-badge&logo=ibm&logoColor=white)
+![Granite](https://img.shields.io/badge/IBM-Granite-5C2D91?style=for-the-badge)
+![Explainable AI](https://img.shields.io/badge/Explainable-AI-FFB000?style=for-the-badge)
+![Knowledge Graph](https://img.shields.io/badge/Knowledge-Graph-00A86B?style=for-the-badge)
+![Human-in-the-Loop](https://img.shields.io/badge/Human--in--the--Loop-AI-8E44AD?style=for-the-badge)
+
+</div>
 
 # 🎬 Problem Statement
 
