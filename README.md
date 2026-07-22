@@ -5,6 +5,21 @@
 >
 > *"Every story lives in its own VERSE."*
 
+# VERSE
+
+<p align="center">
+  <img src="src/imports/VERSE_LOGO_2.png" alt="VERSE Logo" width="220">
+</p>
+
+<h3 align="center">Visual & Explainable Reasoning for Semantic Evolution</h3>
+
+<p align="center">
+  <strong>AI-Powered Semantic Continuity and Production Intelligence for Intelligent Filmmaking</strong>
+</p>
+
+<p align="center">
+  <em>"Every story lives in its own VERSE."</em>
+</p>
 ---
 
 # 🎬 Problem Statement
