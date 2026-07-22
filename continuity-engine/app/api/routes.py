@@ -16,9 +16,6 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.config import ProjectConfig
-from app.engine import ContinuityEngine
-from app.graph.storage import FactStore
 from app.models.schemas import (
     ContinuityReport,
     FactOverride,
@@ -26,20 +23,16 @@ from app.models.schemas import (
     Issue,
     SourceType,
 )
+# Unified engine registry and deduplication helpers — shared with projects
+# router so every project_id maps to exactly one ContinuityEngine instance.
+from app.api.projects import (
+    get_or_create_engine as get_engine,
+    is_duplicate_payload,
+    payload_hash,
+    record_payload_hash,
+)
 
 router = APIRouter(prefix="/continuity", tags=["continuity"])
-
-# Process-local registry. Team 5 should replace this with their session or
-# dependency-injection layer when wiring the shared backend.
-_ENGINES: dict[str, ContinuityEngine] = {}
-_STORE = FactStore(":memory:")
-
-
-def get_engine(project_id: str) -> ContinuityEngine:
-    if project_id not in _ENGINES:
-        config = ProjectConfig.from_dict({"project_id": project_id})
-        _ENGINES[project_id] = ContinuityEngine(config=config, store=_STORE)
-    return _ENGINES[project_id]
 
 
 # --------------------------------------------------------------------------- #
@@ -81,9 +74,16 @@ class IngestResponse(BaseModel):
 
 @router.post("/ingest/script", response_model=IngestResponse)
 def ingest_script(request: IngestRequest) -> IngestResponse:
-    """Accept structured script JSON (team 1)."""
+    """Accept structured script JSON (team 1). Duplicate payloads are skipped."""
+    h = payload_hash(request.payload)
+    if is_duplicate_payload(request.project_id, h):
+        engine = get_engine(request.project_id)
+        return IngestResponse(
+            project_id=request.project_id, facts_ingested=0, stats=engine.stats()
+        )
     engine = get_engine(request.project_id)
     facts = engine.ingest_script(request.payload, request.extractor or "granite")
+    record_payload_hash(request.project_id, h)
     return IngestResponse(
         project_id=request.project_id, facts_ingested=len(facts), stats=engine.stats()
     )
@@ -91,9 +91,16 @@ def ingest_script(request: IngestRequest) -> IngestResponse:
 
 @router.post("/ingest/footage", response_model=IngestResponse)
 def ingest_footage(request: IngestRequest) -> IngestResponse:
-    """Accept structured footage observations (team 2)."""
+    """Accept structured footage observations (team 2). Duplicate payloads are skipped."""
+    h = payload_hash(request.payload)
+    if is_duplicate_payload(request.project_id, h):
+        engine = get_engine(request.project_id)
+        return IngestResponse(
+            project_id=request.project_id, facts_ingested=0, stats=engine.stats()
+        )
     engine = get_engine(request.project_id)
     facts = engine.ingest_footage(request.payload, request.extractor or "vision")
+    record_payload_hash(request.project_id, h)
     return IngestResponse(
         project_id=request.project_id, facts_ingested=len(facts), stats=engine.stats()
     )
@@ -101,14 +108,21 @@ def ingest_footage(request: IngestRequest) -> IngestResponse:
 
 @router.post("/ingest/{source}", response_model=IngestResponse)
 def ingest_source(source: str, request: IngestRequest) -> IngestResponse:
-    """Accept any payload with an explicit source type (call sheets, notes)."""
+    """Accept any payload with an explicit source type (call sheets, notes). Duplicate payloads skipped."""
     try:
         source_type = SourceType(source)
     except ValueError as exc:
         valid = ", ".join(s.value for s in SourceType)
         raise HTTPException(422, f"Unknown source '{source}'. Expected one of: {valid}") from exc
+    h = payload_hash(request.payload)
+    if is_duplicate_payload(request.project_id, h):
+        engine = get_engine(request.project_id)
+        return IngestResponse(
+            project_id=request.project_id, facts_ingested=0, stats=engine.stats()
+        )
     engine = get_engine(request.project_id)
     facts = engine.ingest(request.payload, source_type, request.extractor)
+    record_payload_hash(request.project_id, h)
     return IngestResponse(
         project_id=request.project_id, facts_ingested=len(facts), stats=engine.stats()
     )
@@ -147,4 +161,5 @@ def override_fact(request: OverrideRequest) -> dict[str, Any]:
 
 @router.get("/health")
 def health() -> dict[str, Any]:
+    from app.api.projects import _ENGINES
     return {"status": "ok", "projects": list(_ENGINES)}
