@@ -28,11 +28,11 @@ Modern filmmaking rarely follows the order of the screenplay. Instead, scenes ar
 
 Current workflows rely heavily on manual notes, production photographs, and the script supervisor's memory, making continuity verification a predominantly manual and cognitively demanding process (Smith & Lee, 2024; Todorovic, 2026). Consequently, production teams often experience:
 
-Fragmented production knowledge across departments (Fiorelli, 2026; Grzenkowicz & Wildfeuer, 2025)
-Time-consuming manual continuity verification (Smith & Lee, 2024)
-Increased risk of continuity errors (Todorovic, 2026)
-Expensive re-shoots and post-production fixes (Autodesk, 2026)
-Limited collaboration between production teams due to siloed workflows (McKinsey, 2023; SMPTE, 2024)
+- Fragmented production knowledge across departments (Fiorelli, 2026; Grzenkowicz & Wildfeuer, 2025)
+- Time-consuming manual continuity verification (Smith & Lee, 2024)
+- Increased risk of continuity errors (Todorovic, 2026)
+- Expensive re-shoots and post-production fixes (Autodesk, 2026)
+- Limited collaboration between production teams due to siloed workflows (McKinsey, 2023; SMPTE, 2024)
 
 Although many production management tools exist, they primarily focus on scheduling, asset management, and production logistics rather than understanding the evolving semantic state of a film (Autodesk, 2026; Baek & Park, 2026). Existing platforms can organize production files and workflows but lack the semantic reasoning and temporal understanding necessary to track characters, props, wardrobe, locations, and narrative progression across multiple shooting days (Liu et al., 2025). Consequently, there remains a significant gap for an intelligent AI assistant capable of maintaining a persistent semantic understanding of the evolving film state while continuously tracking characters, props, wardrobe, locations, and narrative progression throughout production (Ji et al., 2020; Zhang & Park, 2026).
 
