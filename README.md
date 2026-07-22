@@ -238,4 +238,4 @@ Together, IBM's AI ecosystem enabled the team to design a trustworthy, explainab
 # 🌟 Vision
 
 VERSE aims to become the intelligent semantic production memory for the filmmaking industry—helping production teams maintain continuity, reduce costly errors, and collaborate more effectively through responsible, explainable, and human-centered AI.
-# vesee
+
