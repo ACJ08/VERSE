@@ -270,7 +270,8 @@ Ji, J., Krishna, R., Fei-Fei, L., & Niebles, J. C. (2020). Action genome: Action
 
 Kraipiyaset, P., Neamchuchuen, T., Chanpramun, S., Cheerapakorn, P., Kongpha, R., Nilsook, P., & Keawbankrud, W. (2026). Agentic AI-driven creative media management in mass communication Education 5.0: A PRISMA-guided mixed-methods systematic review and bibliometric analysis. Online Journal of Communication and Media Technologies, 16(3), e202638. https://doi.org/10.30935/ojcmt/18689
 
-Liu, Y., Zhang, X., & Smith, J. (2025). TempCompass: Do video LLMs really understand temporal relationships and state changes? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (pp. 11420–11431).
+Liu, Y., Zhang, X., & Smith, J. (2025). TempCompass: Do video LLMs really understand temporal relationships and state changes? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (pp. 11420–11431). https://doi.org/10.48550/arXiv.2403.00476
+
 
 McKinsey Global Institute. (2023). The economic potential of generative AI: The next productivity frontier. McKinsey & Company. https://www.mckinsey.com/capabilities/mckinsey-digital/our-insights/the-economic-potential-of-generative-ai
 
