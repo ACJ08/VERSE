@@ -111,3 +111,44 @@ storybook-static/
 .stylelintcache
 *.tgz
 *.tar.gz
+
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+.eggs/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+
+# --- SQLite (runtime database files) ----------------------------------------
+# verse.db is the live database — never commit it.
+# The WAL and SHM sidecar files are runtime-only.
+continuity-engine/verse.db
+continuity-engine/verse.db-wal
+continuity-engine/verse.db-shm
+*.db-wal
+*.db-shm
+
+
+# --- TypeScript build info --------------------------------------------------
+tsconfig.tsbuildinfo
