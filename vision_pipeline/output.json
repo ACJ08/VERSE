@@ -1,0 +1,1429 @@
+[
+  {
+    "frame_id": 0,
+    "timestamp": 0.0,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.94
+      }
+    ]
+  },
+  {
+    "frame_id": 1,
+    "timestamp": 0.48,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.509
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.925
+      }
+    ]
+  },
+  {
+    "frame_id": 2,
+    "timestamp": 0.96,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.556
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.937
+      }
+    ]
+  },
+  {
+    "frame_id": 3,
+    "timestamp": 1.44,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.648
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.867
+      }
+    ]
+  },
+  {
+    "frame_id": 4,
+    "timestamp": 1.92,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.766
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.893
+      }
+    ]
+  },
+  {
+    "frame_id": 5,
+    "timestamp": 2.4,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.793
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.692
+      }
+    ]
+  },
+  {
+    "frame_id": 6,
+    "timestamp": 2.88,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.834
+      }
+    ]
+  },
+  {
+    "frame_id": 7,
+    "timestamp": 3.36,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.822
+      }
+    ]
+  },
+  {
+    "frame_id": 8,
+    "timestamp": 3.84,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.821
+      }
+    ]
+  },
+  {
+    "frame_id": 9,
+    "timestamp": 4.32,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.843
+      }
+    ]
+  },
+  {
+    "frame_id": 10,
+    "timestamp": 4.8,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.85
+      }
+    ]
+  },
+  {
+    "frame_id": 11,
+    "timestamp": 5.28,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.798
+      }
+    ]
+  },
+  {
+    "frame_id": 12,
+    "timestamp": 5.76,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.783
+      }
+    ]
+  },
+  {
+    "frame_id": 13,
+    "timestamp": 6.24,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.782
+      }
+    ]
+  },
+  {
+    "frame_id": 14,
+    "timestamp": 6.72,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.786
+      }
+    ]
+  },
+  {
+    "frame_id": 15,
+    "timestamp": 7.2,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.827
+      }
+    ]
+  },
+  {
+    "frame_id": 16,
+    "timestamp": 7.68,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.797
+      }
+    ]
+  },
+  {
+    "frame_id": 17,
+    "timestamp": 8.16,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.852
+      }
+    ]
+  },
+  {
+    "frame_id": 18,
+    "timestamp": 8.64,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.794
+      }
+    ]
+  },
+  {
+    "frame_id": 19,
+    "timestamp": 9.12,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.851
+      }
+    ]
+  },
+  {
+    "frame_id": 20,
+    "timestamp": 9.6,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "both",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.833
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.554
+      }
+    ]
+  },
+  {
+    "frame_id": 21,
+    "timestamp": 10.08,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.787
+      }
+    ]
+  },
+  {
+    "frame_id": 22,
+    "timestamp": 10.56,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.799
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.726
+      }
+    ]
+  },
+  {
+    "frame_id": 23,
+    "timestamp": 11.04,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.824
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.737
+      }
+    ]
+  },
+  {
+    "frame_id": 24,
+    "timestamp": 11.52,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.757
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.848
+      }
+    ]
+  },
+  {
+    "frame_id": 25,
+    "timestamp": 12.0,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.74
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.858
+      }
+    ]
+  },
+  {
+    "frame_id": 26,
+    "timestamp": 12.48,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "center",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.648
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.873
+      }
+    ]
+  },
+  {
+    "frame_id": 27,
+    "timestamp": 12.96,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "none",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.65
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.961
+      }
+    ]
+  },
+  {
+    "frame_id": 28,
+    "timestamp": 13.44,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.621
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.954
+      }
+    ]
+  },
+  {
+    "frame_id": 29,
+    "timestamp": 13.92,
+    "characters": [
+      {
+        "name": "PERSON_1",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_1",
+        "confidence": 0.56
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.929
+      }
+    ]
+  },
+  {
+    "frame_id": 30,
+    "timestamp": 14.4,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.908
+      }
+    ]
+  },
+  {
+    "frame_id": 31,
+    "timestamp": 14.88,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.904
+      }
+    ]
+  },
+  {
+    "frame_id": 32,
+    "timestamp": 15.36,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.93
+      }
+    ]
+  },
+  {
+    "frame_id": 33,
+    "timestamp": 15.84,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.93
+      }
+    ]
+  },
+  {
+    "frame_id": 34,
+    "timestamp": 16.32,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.927
+      }
+    ]
+  },
+  {
+    "frame_id": 35,
+    "timestamp": 16.8,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.912
+      }
+    ]
+  },
+  {
+    "frame_id": 36,
+    "timestamp": 17.28,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.91
+      }
+    ]
+  },
+  {
+    "frame_id": 37,
+    "timestamp": 17.76,
+    "characters": [
+      {
+        "name": "PERSON_2",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_2",
+        "confidence": 0.51
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.946
+      }
+    ]
+  },
+  {
+    "frame_id": 38,
+    "timestamp": 18.24,
+    "characters": [
+      {
+        "name": "PERSON_2",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_2",
+        "confidence": 0.539
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.932
+      }
+    ]
+  },
+  {
+    "frame_id": 39,
+    "timestamp": 18.72,
+    "characters": [
+      {
+        "name": "PERSON_2",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "both",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_2",
+        "confidence": 0.541
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.934
+      }
+    ]
+  },
+  {
+    "frame_id": 40,
+    "timestamp": 19.2,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.933
+      }
+    ]
+  },
+  {
+    "frame_id": 41,
+    "timestamp": 19.68,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.914
+      }
+    ]
+  },
+  {
+    "frame_id": 42,
+    "timestamp": 20.16,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.931
+      }
+    ]
+  },
+  {
+    "frame_id": 43,
+    "timestamp": 20.64,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.936
+      }
+    ]
+  },
+  {
+    "frame_id": 44,
+    "timestamp": 21.12,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.925
+      }
+    ]
+  },
+  {
+    "frame_id": 45,
+    "timestamp": 21.6,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "none",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.938
+      }
+    ]
+  },
+  {
+    "frame_id": 46,
+    "timestamp": 22.08,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "both",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.938
+      }
+    ]
+  },
+  {
+    "frame_id": 47,
+    "timestamp": 22.56,
+    "characters": [],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "right",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.954
+      }
+    ]
+  },
+  {
+    "frame_id": 48,
+    "timestamp": 23.04,
+    "characters": [
+      {
+        "name": "PERSON_3",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "none",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_3",
+        "confidence": 0.501
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.951
+      }
+    ]
+  },
+  {
+    "frame_id": 49,
+    "timestamp": 23.52,
+    "characters": [
+      {
+        "name": "PERSON_3",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "none",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_3",
+        "confidence": 0.627
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.954
+      }
+    ]
+  },
+  {
+    "frame_id": 50,
+    "timestamp": 24.0,
+    "characters": [
+      {
+        "name": "PERSON_3",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_3",
+        "confidence": 0.642
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.94
+      }
+    ]
+  },
+  {
+    "frame_id": 51,
+    "timestamp": 24.48,
+    "characters": [
+      {
+        "name": "PERSON_3",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "left",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_3",
+        "confidence": 0.597
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.934
+      }
+    ]
+  },
+  {
+    "frame_id": 52,
+    "timestamp": 24.96,
+    "characters": [
+      {
+        "name": "PERSON_3",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "none",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_3",
+        "confidence": 0.582
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.939
+      }
+    ]
+  },
+  {
+    "frame_id": 53,
+    "timestamp": 25.44,
+    "characters": [
+      {
+        "name": "PERSON_3",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "none",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_3",
+        "confidence": 0.578
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.949
+      }
+    ]
+  },
+  {
+    "frame_id": 54,
+    "timestamp": 25.92,
+    "characters": [
+      {
+        "name": "PERSON_3",
+        "costume": null,
+        "position": "left",
+        "movement": null,
+        "emotional_state": null
+      }
+    ],
+    "props": [
+      {
+        "name": "wine glass",
+        "hand_usage": "none",
+        "state": null,
+        "owner": null
+      }
+    ],
+    "detections": [
+      {
+        "type": "character",
+        "name": "PERSON_3",
+        "confidence": 0.592
+      },
+      {
+        "type": "prop",
+        "name": "wine glass",
+        "confidence": 0.938
+      }
+    ]
+  }
+]
