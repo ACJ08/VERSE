@@ -9,7 +9,7 @@ import shutil
 
 app = FastAPI(
     title="ContinuityAI Script Intelligence API",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 # Mount the structured API router (api.py) under /api/v1
