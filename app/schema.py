@@ -294,5 +294,5 @@ class HealthResponse(BaseModel):
     version: str
     granite_configured: bool = Field(
         ...,
-        description="True when Watsonx credentials are detected in the environment.",
+        description="True when local Granite configuration is detected in the environment.",
     )

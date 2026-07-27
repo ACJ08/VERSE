@@ -6,4 +6,4 @@ Single source of truth for the package version string.
 Imported by app/__init__.py and app/api.py to avoid circular imports.
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"

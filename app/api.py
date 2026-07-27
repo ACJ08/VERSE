@@ -90,8 +90,8 @@ router = APIRouter(tags=["VERSE Continuity API"])
     response_model=HealthResponse,
     summary="API health check",
     description=(
-        "Returns the API status, version string, and whether the IBM Granite "
-        "integration layer is configured (credentials detected in environment)."
+        "Returns the API status, version string, and whether the local IBM Granite "
+        "integration layer is configured."
     ),
 )
 def health_check() -> HealthResponse:
@@ -193,10 +193,9 @@ async def parse_script(
     summary="Full AI-powered script continuity analysis",
     description=(
         "Upload a screenplay, extract text, split into scenes, then send each "
-        "scene to IBM Granite 4.1 on watsonx.ai for structured continuity "
+        "scene to local IBM Granite 4.1 for structured continuity "
         "extraction (characters, props, lighting, continuity notes). "
-        "Returns a JSON array of ``SceneContinuity`` objects. "
-        "Requires IBM_API_KEY and IBM_PROJECT_ID to be configured."
+        "Returns a JSON array of ``SceneContinuity`` objects."
     ),
 )
 async def analyse_script(
@@ -209,13 +208,13 @@ async def analyse_script(
     ``ContinuityNote`` warnings so partial failures do not abort the
     entire response.
     """
-    # 0. Guard: credentials must be present before we start any I/O
+    # 0. Guard: configuration must be present before we start any I/O
     if not is_granite_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                "IBM Granite is not configured. "
-                "Set IBM_API_KEY and IBM_PROJECT_ID in your environment."
+                "Local Granite server is not configured. "
+                "Set GRANITE_BASE_URL and GRANITE_MODEL in your environment."
             ),
         )
 
@@ -296,7 +295,7 @@ async def analyse_script(
     summary="Analyse a single screenplay scene",
     description=(
         "Accept the raw text of a single scene in the request body and return "
-        "a structured ``SceneContinuity`` object produced by IBM Granite 4.1. "
+        "a structured ``SceneContinuity`` object produced by local IBM Granite 4.1. "
         "Useful for incremental or streaming workflows where scenes are sent "
         "one at a time."
     ),
@@ -313,8 +312,8 @@ async def analyse_scene_endpoint(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                "IBM Granite is not configured. "
-                "Set IBM_API_KEY and IBM_PROJECT_ID in your environment."
+                "Local Granite server is not configured. "
+                "Set GRANITE_BASE_URL and GRANITE_MODEL in your environment."
             ),
         )
 
@@ -326,10 +325,10 @@ async def analyse_scene_endpoint(
             scene_id=scene_id,
         )
     except RuntimeError as exc:
-        # Credential / connectivity failures → 503
+        # Connectivity / server failures → 503
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Granite API error: {exc}",
+            detail=f"Unable to connect to Granite inference server: {exc}",
         ) from exc
     except ValueError as exc:
         # JSON parsing failure → 502 (bad upstream response)
