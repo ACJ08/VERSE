@@ -152,3 +152,10 @@ continuity-engine/verse.db-shm
 
 # --- TypeScript build info --------------------------------------------------
 tsconfig.tsbuildinfo
+
+
+# --- Runtime upload / extraction artifact directories -----------------------
+# Created automatically by the script-intelligence server on first startup.
+# Never commit user-uploaded or extracted content.
+uploads/
+extracted/
