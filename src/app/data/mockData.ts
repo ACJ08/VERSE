@@ -1,6 +1,10 @@
 // VERSE Application Mock Data
 // Contains all sample data used throughout the frontend for demonstration purposes.
 // In a real application, this data would come from the VERSE backend API.
+//
+// Changelog:
+//   - Added "Development" to ProductionStatus — covers the earliest production lifecycle
+//     phase (script development, financing, greenlighting) that was previously missing.
 
 // ─── Type Definitions ─────────────────────────────────────────────────────────
 
@@ -23,7 +27,8 @@ export type ProductionType =
   | "student-film"
   | "animation";
 
-export type ProductionStatus = "In Production" | "Pre-Production" | "Post-Production" | "Completed";
+// Full production lifecycle: Development → Pre-Production → In Production → Post-Production → Completed
+export type ProductionStatus = "Development" | "Pre-Production" | "In Production" | "Post-Production" | "Completed";
 
 // ─── Role Configuration ────────────────────────────────────────────────────────
 

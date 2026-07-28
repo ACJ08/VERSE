@@ -2,6 +2,14 @@
 // Every sidebar nav item renders a dedicated, fully interactive page.
 // Roles: producer, director, script-supervisor, continuity-supervisor,
 //        production-manager, department-member, film-student
+//
+// Changelog:
+//   - Added "Timeline Tracking" to continuity-supervisor nav and wired up a new
+//     TimelineTracking component — this feature was listed in the role config but
+//     was missing from the sidebar and dashboard routing.
+//   - Added "Development" status colour entries to both ProducerOverview and
+//     ProducerProductions status maps — previously unhandled, now rendered in purple.
+//   - Added "Development" filter button to ProducerProductions filter bar.
 
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -71,6 +79,9 @@ const navigationConfigByRole: Record<UserRole, Array<{ icon: React.ElementType; 
     { icon: Home, label: "Overview" },
     { icon: Eye, label: "Costume Tracking" },
     { icon: Layers, label: "Prop Tracking" },
+    // "Timeline Tracking" was listed in the role's feature set in mockData but was
+    // missing from this nav config — added here to complete the feature surface.
+    { icon: Clock, label: "Timeline Tracking" },
     { icon: CheckCircle, label: "Continuity Verification" },
     { icon: Brain, label: "Production Memory" },
     { icon: Settings, label: "Settings" },
@@ -721,7 +732,8 @@ function ProducerOverview({ productionName, onAIAction }: { productionName: stri
           <SectionTitle action={<button className="text-xs text-primary font-semibold hover:underline" onClick={() => toast.info("Opening all productions…")}>View all</button>}>Active Productions</SectionTitle>
           <div className="flex flex-col gap-3">
             {mockProductions.map((prod) => {
-              const sc = { "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[prod.status] || { c: "#64748B", bg: "#F1F3F7" };
+              // "Development" entry added — was missing, causing that status to silently fall back to grey.
+              const sc = { Development: { c: "var(--verse-violet)", bg: "#F3F0FF" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[prod.status] || { c: "#64748B", bg: "#F1F3F7" };
               return (
                 <div key={prod.id} className="flex items-center gap-3 p-3 rounded-xl border hover:shadow-sm transition-all cursor-pointer" style={{ borderColor: "var(--border)" }} onClick={() => toast.info(`Opening ${prod.title}…`)}>
                   <div className="flex-1 min-w-0">
@@ -800,7 +812,8 @@ const allProductions = [
 function ProducerProductions() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
-  const filters = ["All", "In Production", "Pre-Production", "Post-Production", "Completed"];
+  // "Development" added as the first lifecycle filter — was missing from the bar.
+  const filters = ["All", "Development", "Pre-Production", "In Production", "Post-Production", "Completed"];
   const filtered = allProductions.filter((p) => (filter === "All" || p.status === filter) && p.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -816,7 +829,8 @@ function ProducerProductions() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filtered.map((prod) => {
-          const sc = { "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[prod.status] || { c: "#64748B", bg: "#F1F3F7" };
+          // "Development" entry added — was missing, causing that status to silently fall back to grey.
+          const sc = { Development: { c: "var(--verse-violet)", bg: "#F3F0FF" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[prod.status] || { c: "#64748B", bg: "#F1F3F7" };
           return (
             <Card key={prod.id}>
               <div className="flex items-start justify-between mb-4">
@@ -2051,6 +2065,62 @@ function ContinuityVerification() {
   );
 }
 
+// TimelineTracking — Continuity Supervisor view.
+// Tracks scene shooting order vs. narrative order so the continuity supervisor
+// can spot gaps, overlaps, and out-of-sequence anomalies at a glance.
+// Previously listed as a role feature in mockData but had no nav entry or page.
+function TimelineTracking() {
+  const scenes = [
+    { id: "s1", scene: "Scene 17", shootDay: "Day 1", narrative: "Monday Morning", location: "INT. Office", status: "Verified", continuity: 100 },
+    { id: "s2", scene: "Scene 18", shootDay: "Day 1", narrative: "Monday Morning", location: "INT. Office", status: "Flagged", continuity: 72 },
+    { id: "s3", scene: "Scene 23", shootDay: "Day 3", narrative: "Tuesday Afternoon", location: "INT. Diner", status: "Flagged", continuity: 81 },
+    { id: "s4", scene: "Scene 24", shootDay: "Day 4", narrative: "Tuesday Evening", location: "EXT. Parking Lot", status: "Verified", continuity: 97 },
+    { id: "s5", scene: "Scene 31", shootDay: "Day 6", narrative: "Wednesday Night", location: "EXT. Rooftop", status: "Pending", continuity: 0 },
+    { id: "s6", scene: "Scene 34", shootDay: "Day 8", narrative: "Thursday Morning", location: "INT. Precinct", status: "Verified", continuity: 99 },
+  ];
+  const statusStyle = {
+    Verified: { c: "var(--verse-emerald)", bg: "#ECFDF5" },
+    Flagged:  { c: "var(--verse-red)",     bg: "#FEF2F2" },
+    Pending:  { c: "#64748B",              bg: "#F1F3F7" },
+  };
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Timeline Tracking"
+        subtitle="Shoot-day vs. narrative order — spot continuity gaps across the schedule."
+        actions={<Btn variant="secondary" icon={Download} onClick={() => toast.promise(new Promise((r) => setTimeout(r, 800)), { loading: "Exporting timeline…", success: "Timeline exported.", error: "Failed." })}>Export</Btn>}
+      />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Scenes Tracked" value={scenes.length} icon={Clock} color="var(--verse-midnight)" />
+        <StatCard label="Verified" value={scenes.filter((s) => s.status === "Verified").length} icon={CheckCircle} color="var(--verse-emerald)" />
+        <StatCard label="Flagged" value={scenes.filter((s) => s.status === "Flagged").length} icon={AlertTriangle} color="var(--verse-red)" />
+        <StatCard label="Pending" value={scenes.filter((s) => s.status === "Pending").length} icon={Clock} color="var(--verse-gold)" />
+      </div>
+      <Card>
+        <SectionTitle>Scene Timeline</SectionTitle>
+        <div className="flex flex-col gap-2">
+          {scenes.map((s) => {
+            const st = statusStyle[s.status as keyof typeof statusStyle];
+            return (
+              <div key={s.id} className="flex items-center gap-4 p-3 rounded-xl border text-sm" style={{ borderColor: "var(--border)", background: "white" }}>
+                <div className="w-20 text-xs font-mono text-muted-foreground flex-shrink-0">{s.shootDay}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-foreground" style={{ fontFamily: "var(--font-display)" }}>{s.scene}</p>
+                  <p className="text-xs text-muted-foreground truncate">{s.location} · {s.narrative}</p>
+                </div>
+                {s.continuity > 0 && <ScorePill value={s.continuity} />}
+                <StatusBadge label={s.status} color={st.c} bg={st.bg} />
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+
+
 function ProductionMemory() {
   const events = [
     { time: "Dec 12, 10:45", event: "AI detected timeline inconsistency in Scene 18", type: "ai", color: "var(--verse-violet)" },
@@ -2804,6 +2874,8 @@ function DashboardContent({
       switch (activeNav) {
         case "Costume Tracking": return <CostumeTracking />;
         case "Prop Tracking": return <PropTracking />;
+        // Route for the previously missing "Timeline Tracking" nav item.
+        case "Timeline Tracking": return <TimelineTracking />;
         case "Continuity Verification": return <ContinuityVerification />;
         case "Production Memory": return <ProductionMemory />;
         default: return <ContinuitySupervisorOverview productionName={productionName} />;
