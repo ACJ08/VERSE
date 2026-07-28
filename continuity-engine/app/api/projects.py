@@ -33,11 +33,28 @@ _STORE = FactStore(str(__import__("pathlib").Path(__file__).resolve().parents[2]
 
 
 def get_or_create_engine(project_id: str) -> ContinuityEngine:
-    """Return the cached engine for *project_id*, rehydrating from FactStore if needed."""
+    """Return the cached engine for *project_id*, rehydrating from FactStore if needed.
+
+    Construction order matters:
+    1. create_llm()            — WatsonxAdapter if WATSONX_API_KEY is set, else None.
+    2. create_semantic_matcher — Granite embedding matcher built from the same adapter.
+       Passed to ContinuityEngine so EntityMatcher uses it as its SemanticMatcher
+       fallback instead of the keyword-synonym table.  When credentials are absent
+       both return None and the engine degrades to keyword + fuzzy-string matching.
+    3. ContinuityEngine(llm=, semantic_matcher=) — LLM is forwarded to AssumptionEngine,
+       ExplanationWriter, and SuggestionWriter; semantic_matcher to EntityMatcher.
+    """
     if project_id not in _ENGINES:
         config = ProjectConfig.from_dict({"project_id": project_id})
-        from app.services.watsonx import create_llm
-        engine = ContinuityEngine(config=config, store=_STORE, llm=create_llm())
+        from app.services.watsonx import create_llm, create_semantic_matcher
+        llm = create_llm()
+        semantic_matcher = create_semantic_matcher(llm)
+        engine = ContinuityEngine(
+            config=config,
+            store=_STORE,
+            llm=llm,
+            semantic_matcher=semantic_matcher,
+        )
         # Rehydrate: replay stored facts so the in-memory graph is consistent
         # with what was persisted before a restart.
         facts = _STORE.load_facts(project_id)

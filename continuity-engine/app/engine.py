@@ -45,6 +45,26 @@ class ContinuityEngine:
 
     One instance holds one project's graph and memory. Construct with a
     `FactStore` to persist across processes; omit it for an in-memory run.
+
+    Parameters
+    ----------
+    config:
+        Project-level tunables (weights, thresholds, aliases). Defaults to
+        ``default_config()`` when omitted.
+    store:
+        SQLite-backed FactStore for persistence across restarts. Omit for an
+        in-memory-only run (tests, one-shot scripts).
+    llm:
+        Optional LanguageModel (e.g. WatsonxAdapter). Forwarded to
+        AssumptionEngine (trigger classification), ExplanationWriter (NL
+        explanations), and SuggestionWriter (NL fix suggestions).  When None
+        all three fall back to their rule-based paths — reports are still
+        complete and accurate.
+    semantic_matcher:
+        Optional callable ``(left: str, right: str) -> float`` returning a
+        similarity score in [0, 1].  Forwarded to EntityMatcher as its AI
+        fallback for resolving "Elena" == "Elena Chen".  When None the engine
+        uses keyword synonyms + fuzzy string matching only.
     """
 
     def __init__(
@@ -52,14 +72,16 @@ class ContinuityEngine:
         config: ProjectConfig | None = None,
         store: FactStore | None = None,
         llm: LanguageModel | None = None,
+        semantic_matcher=None,
     ) -> None:
         self.config = config or default_config()
         self.store = store
 
         self._normaliser = Normaliser(self.config)
-        self._matcher = EntityMatcher(
-            self.config, keyword_semantic_matcher(self.config.value_synonyms)
-        )
+        # Prefer the Granite-backed semantic matcher when available; fall back to
+        # the keyword-synonym table that ships with the default config.
+        _sm = semantic_matcher or keyword_semantic_matcher(self.config.value_synonyms)
+        self._matcher = EntityMatcher(self.config, _sm)
         self._parser = DynamicParser(self.config, self._normaliser)
 
         self.graph = KnowledgeGraph(self.config, self._matcher)

@@ -656,10 +656,41 @@ function AIRecommendationCard({ rec, onAction }: { rec: typeof aiRecommendations
 // PRODUCER PAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ProducerOverview({ productionName, onAIAction }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void }) {
+function ProducerOverview({ productionName, onAIAction, projectId }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void; projectId?: string }) {
   const [showNewProd, setShowNewProd] = useState(false);
   const [newProdName, setNewProdName] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // ── Live continuity issues from the engine ──────────────────────────────────
+  // When the backend is online and a project is active, fetch real issues from
+  // GET /continuity/issues/{project_id}.  Falls back to the static mock array
+  // (aiRecommendations from mockData.ts) when the backend is offline or no
+  // project has been created yet — preserving the full demo experience.
+  const [liveRecs, setLiveRecs] = React.useState<typeof aiRecommendations | null>(null);
+  React.useEffect(() => {
+    if (!projectId) return;
+    import("@/app/lib/api").then(({ continuity, toDisplaySeverity }) => {
+      continuity.issues(projectId)
+        .then((issues) => {
+          if (!issues.length) return; // no data yet — keep mock
+          setLiveRecs(
+            issues.slice(0, 5).map((i) => ({
+              id: i.issue_id,
+              severity: toDisplaySeverity(i.severity),
+              scene: i.scene_id ?? "—",
+              issue: i.explanation || i.attribute,
+              confidence: Math.round(i.confidence * 100),
+              suggestion: i.suggested_fix || "Review the flagged scene with your script supervisor.",
+              timestamp: "Just now",
+            }))
+          );
+        })
+        .catch(() => {}); // backend offline — keep mock
+    });
+  }, [projectId]);
+
+  // Use live data when available; fall back to design-time mock array
+  const displayRecs = liveRecs ?? aiRecommendations;
 
   const handleCreateProduction = async () => {
     if (!newProdName.trim()) { toast.error("Enter a production name."); return; }
@@ -769,9 +800,11 @@ function ProducerOverview({ productionName, onAIAction }: { productionName: stri
       </Card>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div>
-          <SectionTitle><span>AI Recommendations <VioletBadge>{aiRecommendations.length} new</VioletBadge></span></SectionTitle>
+          {/* AI Recommendations — live from the continuity engine when online,
+              falling back to mock data in demo mode */}
+          <SectionTitle><span>AI Recommendations <VioletBadge>{displayRecs.length} new</VioletBadge></span></SectionTitle>
           <div className="flex flex-col gap-3">
-            {aiRecommendations.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
+            {displayRecs.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
           </div>
         </div>
         <div>
@@ -2847,7 +2880,9 @@ function DashboardContent({
         case "Analytics": return <ProducerAnalytics />;
         case "AI Insights": return <ProducerAIInsights />;
         case "Workspace": return <ProducerWorkspace />;
-        default: return <ProducerOverview productionName={productionName} onAIAction={onAIAction} />;
+        // Pass projectId so ProducerOverview can fetch live continuity issues
+        // from GET /continuity/issues/{id} instead of the static mock array.
+        default: return <ProducerOverview productionName={productionName} onAIAction={onAIAction} projectId={projectId} />;
       }
 
     case "director":
@@ -2928,7 +2963,25 @@ export default function DashboardPage({
     apiProjects.list().then((list) => { if (list.length > 0) setActiveProjectId(list[0].id); }).catch(() => {});
   }, []);
 
-  const handleAIAction = (id: string, action: "accept" | "dismiss") => {
+  // handleAIAction — posts the human decision to POST /continuity/feedback so
+  // the engine persists the accept/dismiss, adjusts the issue status, and
+  // refreshes scores on the next analyse() call.
+  // Falls back to a toast-only response if the backend is offline (demo mode).
+  const handleAIAction = async (id: string, action: "accept" | "dismiss") => {
+    if (activeProjectId) {
+      try {
+        const { continuity } = await import("@/app/lib/api");
+        // "accept" maps to the engine's "confirm" action (human verified the issue).
+        // "dismiss" maps directly to "dismiss" (human says it's not an error).
+        await continuity.feedback(
+          activeProjectId,
+          id,
+          action === "accept" ? "confirm" : "dismiss",
+        );
+      } catch {
+        // Backend offline — fall through to toast only (demo mode unchanged)
+      }
+    }
     if (action === "accept") toast.success("AI recommendation accepted. Continuity log updated.");
     else toast.info("Recommendation dismissed.");
   };

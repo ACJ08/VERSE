@@ -93,3 +93,65 @@ def create_llm() -> WatsonxAdapter | None:
     """Create a WatsonxAdapter if credentials are present; return None otherwise."""
     adapter = WatsonxAdapter()
     return adapter if adapter.is_available else None
+
+
+def create_semantic_matcher(adapter: WatsonxAdapter | None = None):
+    """Return a SemanticMatcher callable backed by Granite embeddings.
+
+    The matcher satisfies the app.ingestion.entity_matcher.SemanticMatcher
+    protocol: it takes two name strings and returns a similarity score in [0, 1].
+
+    If the adapter is unavailable (no credentials / SDK not installed), returns
+    None so the engine falls back to its keyword synonym table — no change in
+    behaviour from before.
+
+    Usage inside get_or_create_engine:
+        llm = create_llm()
+        semantic_matcher = create_semantic_matcher(llm)
+        engine = ContinuityEngine(..., semantic_matcher=semantic_matcher)
+    """
+    if adapter is None or not adapter.is_available:
+        return None
+
+    def _embed(text: str) -> list[float]:
+        """Ask Granite to produce a 1-line embedding proxy via cosine-like prompt."""
+        # ibm-watsonx-ai embeddings endpoint — uses a dedicated embedding model.
+        # Falls back to 0.0 similarity on any failure so entity matching
+        # simply degrades to the keyword path.
+        try:
+            from ibm_watsonx_ai import APIClient, Credentials
+            from ibm_watsonx_ai.foundation_models import Embeddings
+            from ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames as EmbedParams
+            import os, math
+
+            creds = Credentials(
+                url=os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com"),
+                api_key=adapter._api_key,
+            )
+            client = Embeddings(
+                model_id="ibm/slate-125m-english-rtrvr",
+                credentials=creds,
+                project_id=adapter._project_id,
+                params={EmbedParams.TRUNCATE_INPUT_TOKENS: 32},
+            )
+            result = client.generate(inputs=[text])
+            return result["results"][0]["embedding"]
+        except Exception:
+            return []
+
+    def _cosine(a: list[float], b: list[float]) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        import math
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(x * x for x in b))
+        if na == 0 or nb == 0:
+            return 0.0
+        return dot / (na * nb)
+
+    def semantic_match(left: str, right: str) -> float:
+        """Semantic similarity in [0, 1] between two entity name strings."""
+        return _cosine(_embed(left), _embed(right))
+
+    return semantic_match
