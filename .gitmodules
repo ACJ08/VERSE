@@ -1,0 +1,3 @@
+[submodule "modules/continuity"]
+	path = modules/continuity
+	url = https://github.com/ayubarslaan/Continuity-script-intelligence.git
