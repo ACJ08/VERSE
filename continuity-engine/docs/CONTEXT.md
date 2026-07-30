@@ -44,7 +44,7 @@ Call sheets / human ──┘                                     │           
 ## Key decisions
 
 **Facts are never overwritten.** Conflicting claims coexist in the graph;
-resolution happens at comparison time via trust. Losing the losing value would
+resolution happens at comparison time -via trust. Losing the losing value would
 make the "expected vs observed with sources" UI impossible.
 
 **Trust vs confidence are separate axes.** Trust = how much we believe the
