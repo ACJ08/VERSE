@@ -56,6 +56,40 @@ def test_only_the_affected_category_is_penalised(engine: ContinuityEngine):
     assert report.category_scores["props"] == 100.0
 
 
+def test_analysis_is_idempotent(engine: ContinuityEngine):
+    """Regression: re-running inflated `occurrences` and escalated severity.
+
+    The dashboard re-runs analysis constantly, so a drifting score is a
+    correctness bug, not a cosmetic one.
+    """
+    for scene in (1, 2):
+        engine.ingest_script(script_scene(f"S{scene}", scene, held_in_hand="left"))
+        engine.ingest_footage(footage_scene(f"S{scene}", scene, hand="right"))
+
+    runs = [engine.analyse() for _ in range(3)]
+
+    assert len({r.overall_score for r in runs}) == 1, "score must not drift"
+    assert len({len(r.issues) for r in runs}) == 1
+    assert len({tuple(sorted(i.severity.value for i in r.issues)) for r in runs}) == 1
+
+
+def test_dismissing_an_issue_never_lowers_the_score(engine: ContinuityEngine):
+    """Regression: dismissing used to drop the score because of counter drift."""
+    for scene in (1, 2):
+        engine.ingest_script(script_scene(f"S{scene}", scene, held_in_hand="left"))
+        engine.ingest_footage(footage_scene(f"S{scene}", scene, hand="right"))
+
+    before = engine.analyse()
+    issue = find_issue(before, "hand_mismatch")
+    assert issue is not None
+
+    engine.apply_feedback(FeedbackAction(issue_id=issue.issue_id, action="dismiss"))
+    after = engine.analyse()
+
+    assert len(after.issues) < len(before.issues)
+    assert after.overall_score >= before.overall_score
+
+
 def test_human_confirmed_fact_overrides_ai_output(engine: ContinuityEngine):
     """Case 9."""
     engine.ingest_script(script_scene("S1", 1, held_in_hand="left"))

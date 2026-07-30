@@ -1,0 +1,573 @@
+{
+  "report": {
+    "project_id": "VERSE_DEMO",
+    "scene_id": null,
+    "overall_score": 87.6,
+    "category_scores": {
+      "props": 55.6,
+      "costume": 78.4,
+      "movement": 100.0,
+      "spatial": 91.2,
+      "narrative": 100.0,
+      "lighting": 100.0,
+      "other": 100.0
+    },
+    "issues": [
+      {
+        "issue_id": "ISSUE_22D049CA",
+        "category": "props",
+        "type": "hand_mismatch",
+        "severity": "medium",
+        "confidence": 0.704,
+        "entity": {
+          "type": "character",
+          "name": "Sarah",
+          "key": "sarah",
+          "raw_type": null
+        },
+        "attribute": "held_in_hand",
+        "scene_id": "SCENE_012",
+        "expected": {
+          "value": "left",
+          "source": "script",
+          "source_reference": "Scene SCENE_012",
+          "confidence": 1.0
+        },
+        "observed": {
+          "value": "right",
+          "source": "footage",
+          "source_reference": "00:32.0",
+          "confidence": 0.88
+        },
+        "explanation": "The script places the item in Sarah's left hand, while the footage shows it in the right hand. Expected value from script (Scene SCENE_012). Observed in footage at 00:32.0 with 88% confidence. Score impact was reduced because narrative context may explain the change.",
+        "suggested_fix": "Review the shot and move the item to the left hand unless the change is intentional. Narrative context may already explain this \u2014 confirm before changing anything.",
+        "status": "pending_review",
+        "occurrences": 1,
+        "related_scene_ids": [
+          "SCENE_012"
+        ],
+        "mitigated_by": [
+          "ASSUM_b2ffaee0"
+        ],
+        "score_impact": 8.45,
+        "supporting_fact_ids": [
+          "FACT_b73813f1e6",
+          "FACT_269b386914"
+        ]
+      },
+      {
+        "issue_id": "ISSUE_12A0E414",
+        "category": "props",
+        "type": "hand_mismatch",
+        "severity": "high",
+        "confidence": 0.72,
+        "entity": {
+          "type": "character",
+          "name": "Sarah",
+          "key": "sarah",
+          "raw_type": null
+        },
+        "attribute": "held_in_hand",
+        "scene_id": "SCENE_013",
+        "expected": {
+          "value": "left",
+          "source": "script",
+          "source_reference": "Scene SCENE_013",
+          "confidence": 1.0
+        },
+        "observed": {
+          "value": "right",
+          "source": "footage",
+          "source_reference": "00:55.6",
+          "confidence": 0.9
+        },
+        "explanation": "The script places the item in Sarah's left hand, while the footage shows it in the right hand. Expected value from script (Scene SCENE_013). Observed in footage at 00:55.6 with 90% confidence. Seen in 2 scenes (SCENE_012, SCENE_013). Score impact was reduced because narrative context may explain the change.",
+        "suggested_fix": "Priority: Review the shot and move the item to the left hand unless the change is intentional. Narrative context may already explain this \u2014 confirm before changing anything.",
+        "status": "pending_review",
+        "occurrences": 2,
+        "related_scene_ids": [
+          "SCENE_012",
+          "SCENE_013"
+        ],
+        "mitigated_by": [
+          "ASSUM_b2ffaee0"
+        ],
+        "score_impact": 18.0,
+        "supporting_fact_ids": [
+          "FACT_8240ca6cff",
+          "FACT_ab3fe9c71d"
+        ]
+      },
+      {
+        "issue_id": "ISSUE_475B2502",
+        "category": "costume",
+        "type": "costume_mismatch",
+        "severity": "medium",
+        "confidence": 0.72,
+        "entity": {
+          "type": "character",
+          "name": "Sarah",
+          "key": "sarah",
+          "raw_type": null
+        },
+        "attribute": "wears",
+        "scene_id": "SCENE_013",
+        "expected": {
+          "value": "blue blazer",
+          "source": "script",
+          "source_reference": "Scene SCENE_013",
+          "confidence": 1.0
+        },
+        "observed": {
+          "value": "red cardigan",
+          "source": "footage",
+          "source_reference": "00:55.6",
+          "confidence": 0.9
+        },
+        "explanation": "Sarah is expected to wear 'blue blazer' but the footage shows 'red cardigan', with no scripted costume change in between. Expected value from script (Scene SCENE_013). Observed in footage at 00:55.6 with 90% confidence.",
+        "suggested_fix": "Confirm the wardrobe change was intentional, otherwise restore 'blue blazer'.",
+        "status": "pending_review",
+        "occurrences": 1,
+        "related_scene_ids": [
+          "SCENE_013"
+        ],
+        "mitigated_by": [],
+        "score_impact": 21.6,
+        "supporting_fact_ids": [
+          "FACT_f63faee6c4",
+          "FACT_95e2027afe"
+        ]
+      },
+      {
+        "issue_id": "ISSUE_3D2728A7",
+        "category": "spatial",
+        "type": "screen_direction_mismatch",
+        "severity": "medium",
+        "confidence": 0.736,
+        "entity": {
+          "type": "character",
+          "name": "Marcus",
+          "key": "marcus",
+          "raw_type": null
+        },
+        "attribute": "screen_position",
+        "scene_id": "SCENE_013",
+        "expected": {
+          "value": "frame right",
+          "source": "script",
+          "source_reference": "Scene SCENE_013",
+          "confidence": 1.0
+        },
+        "observed": {
+          "value": "frame left",
+          "source": "footage",
+          "source_reference": "00:55.6",
+          "confidence": 0.92
+        },
+        "explanation": "Screen position changed from 'frame right' to 'frame left' without a scripted move, which can break the 180-degree rule. Expected value from script (Scene SCENE_013). Observed in footage at 00:55.6 with 92% confidence. Score impact was reduced because narrative context may explain the change.",
+        "suggested_fix": "Verify the camera side and character blocking between shots. Narrative context may already explain this \u2014 confirm before changing anything.",
+        "status": "pending_review",
+        "occurrences": 1,
+        "related_scene_ids": [
+          "SCENE_013"
+        ],
+        "mitigated_by": [
+          "ASSUM_b2ffaee0"
+        ],
+        "score_impact": 8.83,
+        "supporting_fact_ids": [
+          "FACT_158b40ad2c",
+          "FACT_51573a871d"
+        ]
+      },
+      {
+        "issue_id": "ISSUE_544F953E",
+        "category": "props",
+        "type": "missing_object",
+        "severity": "high",
+        "confidence": 0.8,
+        "entity": {
+          "type": "character",
+          "name": "Marcus",
+          "key": "marcus",
+          "raw_type": null
+        },
+        "attribute": "holds",
+        "scene_id": "SCENE_015",
+        "expected": {
+          "value": "notebook",
+          "source": "script",
+          "source_reference": "Scene SCENE_015",
+          "confidence": 1.0
+        },
+        "observed": {
+          "value": null,
+          "source": null,
+          "source_reference": "",
+          "confidence": 1.0
+        },
+        "explanation": "The script expects 'notebook' in this scene, but it was not detected in the footage. Expected value from script (Scene SCENE_015). Score impact was reduced because narrative context may explain the change.",
+        "suggested_fix": "Priority: Check whether 'notebook' is present in the shot. Narrative context may already explain this \u2014 confirm before changing anything.",
+        "status": "pending_review",
+        "occurrences": 1,
+        "related_scene_ids": [
+          "SCENE_015"
+        ],
+        "mitigated_by": [
+          "ASSUM_3171e5c4"
+        ],
+        "score_impact": 18.0,
+        "supporting_fact_ids": [
+          "FACT_99039f047a"
+        ]
+      }
+    ],
+    "temporary_assumptions": [
+      {
+        "assumption_id": "ASSUM_b2ffaee0",
+        "description": "Crowd disturbance may have moved objects and disordered the environment.",
+        "scene_id": "SCENE_012",
+        "created_at_sequence": 12,
+        "expires_after_scenes": 2,
+        "confidence": 0.6,
+        "source_text": "Sarah raises the glass and speaks. The crowd panics and rushes through the shop.",
+        "affects_categories": [
+          "props",
+          "spatial",
+          "movement"
+        ],
+        "affects_entities": [],
+        "active": true,
+        "contradicted_by": null
+      },
+      {
+        "assumption_id": "ASSUM_3171e5c4",
+        "description": "Environmental event may have altered the set and lighting.",
+        "scene_id": "SCENE_014",
+        "created_at_sequence": 14,
+        "expires_after_scenes": 2,
+        "confidence": 0.55,
+        "source_text": "Sarah removes her blue blazer and steps outside into the rain.",
+        "affects_categories": [
+          "props",
+          "lighting",
+          "spatial"
+        ],
+        "affects_entities": [],
+        "active": true,
+        "contradicted_by": null
+      }
+    ],
+    "score_summary": {
+      "main_reason": "5 continuity issues reduced the costume, props, spatial score, led by a high hand mismatch. 4 were softened by narrative context.",
+      "penalties_applied": 5,
+      "issues_mitigated": 4
+    },
+    "generated_at": "2026-07-21T14:00:48.472289Z",
+    "engine_version": "0.1.0"
+  },
+  "script": {
+    "project_id": "VERSE_DEMO",
+    "source": "script",
+    "scenes": [
+      {
+        "scene_id": "SCENE_011",
+        "sequence": 11,
+        "location": "coffee shop",
+        "heading": "INT. COFFEE SHOP - DAY",
+        "characters": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "holds": "glass",
+            "held_in_hand": "left",
+            "wears": "blue blazer",
+            "screen_position": "frame left"
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "screen_position": "frame right"
+          }
+        ],
+        "props": [
+          {
+            "name": "glass",
+            "type": "prop",
+            "location": "held"
+          }
+        ],
+        "lighting": "warm afternoon",
+        "action": "Sarah sits by the window wearing a blue blazer. She picks up a glass with her left hand. Her notebook rests on the table beside her."
+      },
+      {
+        "scene_id": "SCENE_012",
+        "sequence": 12,
+        "location": "coffee shop",
+        "heading": "INT. COFFEE SHOP - DAY",
+        "characters": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "holds": "glass",
+            "held_in_hand": "left",
+            "wears": "blue blazer",
+            "screen_position": "frame left"
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "wears": "grey coat",
+            "screen_position": "frame right"
+          }
+        ],
+        "props": [
+          {
+            "name": "glass",
+            "type": "prop",
+            "location": "held"
+          }
+        ],
+        "lighting": "warm afternoon",
+        "action": "Sarah raises the glass and speaks. The crowd panics and rushes through the shop."
+      },
+      {
+        "scene_id": "SCENE_013",
+        "sequence": 13,
+        "location": "coffee shop",
+        "heading": "INT. COFFEE SHOP - DAY",
+        "characters": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "holds": "glass",
+            "held_in_hand": "left",
+            "wears": "blue blazer",
+            "screen_position": "frame left"
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "holds": "notebook",
+            "held_in_hand": "right",
+            "wears": "grey coat",
+            "screen_position": "frame right"
+          }
+        ],
+        "props": [
+          {
+            "name": "glass",
+            "type": "prop",
+            "location": "held"
+          },
+          {
+            "name": "notebook",
+            "type": "prop",
+            "location": "held"
+          }
+        ],
+        "lighting": "warm afternoon",
+        "action": "Marcus reaches for the notebook on the table."
+      },
+      {
+        "scene_id": "SCENE_014",
+        "sequence": 14,
+        "location": "street",
+        "heading": "EXT. STREET - DAY",
+        "characters": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "wears": "grey shirt",
+            "screen_position": "frame left"
+          }
+        ],
+        "props": [],
+        "lighting": "overcast",
+        "action": "Sarah removes her blue blazer and steps outside into the rain."
+      },
+      {
+        "scene_id": "SCENE_015",
+        "sequence": 15,
+        "location": "street",
+        "heading": "EXT. STREET - DAY",
+        "characters": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "wears": "grey shirt",
+            "screen_position": "frame left"
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "holds": "notebook",
+            "held_in_hand": "right",
+            "wears": "grey coat",
+            "screen_position": "frame right"
+          }
+        ],
+        "props": [
+          {
+            "name": "notebook",
+            "type": "prop",
+            "location": "held"
+          }
+        ],
+        "lighting": "overcast",
+        "action": "They walk together toward the station."
+      }
+    ]
+  },
+  "footage": {
+    "project_id": "VERSE_DEMO",
+    "source": "footage",
+    "observations": [
+      {
+        "scene_id": "SCENE_011",
+        "sequence": 11,
+        "timestamp": "00:08.4",
+        "detections": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "holds": "glass",
+            "hand": "left",
+            "wears": "blue blazer",
+            "position": "frame left",
+            "confidence": 0.89
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "position": "frame right",
+            "confidence": 0.9
+          }
+        ]
+      },
+      {
+        "scene_id": "SCENE_012",
+        "sequence": 12,
+        "timestamp": "00:32.0",
+        "detections": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "holds": "glass",
+            "hand": "right",
+            "wears": "blue blazer",
+            "position": "frame left",
+            "confidence": 0.88
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "wears": "grey coat",
+            "position": "frame right",
+            "confidence": 0.9
+          }
+        ]
+      },
+      {
+        "scene_id": "SCENE_013",
+        "sequence": 13,
+        "timestamp": "00:55.6",
+        "detections": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "holds": "glass",
+            "hand": "right",
+            "wears": "red cardigan",
+            "position": "frame left",
+            "confidence": 0.9
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "holds": "notebook",
+            "hand": "right",
+            "wears": "grey coat",
+            "position": "frame left",
+            "confidence": 0.92
+          }
+        ]
+      },
+      {
+        "scene_id": "SCENE_014",
+        "sequence": 14,
+        "timestamp": "01:19.2",
+        "detections": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "wears": "grey shirt",
+            "position": "frame left",
+            "confidence": 0.94
+          }
+        ]
+      },
+      {
+        "scene_id": "SCENE_015",
+        "sequence": 15,
+        "timestamp": "01:42.8",
+        "detections": [
+          {
+            "name": "Sarah",
+            "type": "character",
+            "wears": "grey shirt",
+            "position": "frame left",
+            "confidence": 0.92
+          },
+          {
+            "name": "Marcus",
+            "type": "character",
+            "hand": "right",
+            "wears": "grey coat",
+            "position": "frame right",
+            "confidence": 0.87
+          }
+        ]
+      }
+    ]
+  },
+  "stats": {
+    "nodes": 30,
+    "edges": 42,
+    "facts": 103,
+    "scenes": 5,
+    "entities": 6
+  },
+  "planted_errors": [
+    {
+      "scene_id": "SCENE_012",
+      "character": "Sarah",
+      "attribute": "held_in_hand",
+      "injected": "right"
+    },
+    {
+      "scene_id": "SCENE_013",
+      "character": "Sarah",
+      "attribute": "held_in_hand",
+      "injected": "right"
+    },
+    {
+      "scene_id": "SCENE_013",
+      "character": "Sarah",
+      "attribute": "wears",
+      "injected": "red cardigan"
+    },
+    {
+      "scene_id": "SCENE_013",
+      "character": "Marcus",
+      "attribute": "screen_position",
+      "injected": "frame left"
+    },
+    {
+      "scene_id": "SCENE_015",
+      "character": "Marcus",
+      "attribute": "holds",
+      "injected": "<removed>"
+    }
+  ]
+}

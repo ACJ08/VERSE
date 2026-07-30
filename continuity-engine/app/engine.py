@@ -109,6 +109,13 @@ class ContinuityEngine:
         """
         self._sync_dismissals()
 
+        # Repetition counts are rebuilt per pass so `analyse()` is idempotent.
+        self.detector.reset()
+        if scene_id is not None:
+            self.detector.seed_history(
+                [i for i in self._issues.values() if i.scene_id != scene_id]
+            )
+
         issues = (
             self.detector.detect_scene(scene_id)
             if scene_id is not None

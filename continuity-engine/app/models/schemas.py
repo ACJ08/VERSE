@@ -170,9 +170,18 @@ class TemporaryAssumption(BaseModel):
     contradicted_by: str | None = None
 
     def is_active_at(self, sequence: int) -> bool:
+        """Active from the scene that created it until it expires.
+
+        The lower bound matters: without it, a disturbance in scene 14 would
+        retroactively excuse a mismatch in scene 12.
+        """
         if not self.active:
             return False
-        return sequence <= self.created_at_sequence + self.expires_after_scenes
+        return (
+            self.created_at_sequence
+            <= sequence
+            <= self.created_at_sequence + self.expires_after_scenes
+        )
 
 
 # --------------------------------------------------------------------------- #

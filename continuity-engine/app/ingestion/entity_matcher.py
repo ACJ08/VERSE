@@ -8,6 +8,7 @@ graph code.
 
 from __future__ import annotations
 
+import re
 from typing import Callable, Protocol
 
 from app.config import ProjectConfig
@@ -96,15 +97,22 @@ def keyword_semantic_matcher(
 
     Swap this for a watsonx/Granite embedding call when team 1's model is up;
     the signature is all `EntityMatcher` depends on.
+
+    Matching is whole-word only. Substring matching merged the characters
+    "Sarah" and "Marcus", because the one-letter synonym "r" (for "right hand")
+    appears inside both names.
     """
     groups: list[set[str]] = []
     for canonical, variants in synonyms.items():
         groups.append({canonical.lower(), *(v.lower() for v in variants)})
 
+    def contains(text: str, term: str) -> bool:
+        return re.search(rf"\b{re.escape(term)}\b", text) is not None
+
     def match(left: str, right: str) -> float:
         l, r = left.lower(), right.lower()
         for group in groups:
-            if any(term in l for term in group) and any(term in r for term in group):
+            if any(contains(l, t) for t in group) and any(contains(r, t) for t in group):
                 return 0.9
         return 0.0
 

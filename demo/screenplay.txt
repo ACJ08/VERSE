@@ -1,0 +1,32 @@
+TITLE: THE LAST ORDER
+PROJECT: VERSE_DEMO
+
+SCENE 11 - INT. COFFEE SHOP - DAY
+LIGHTING: warm afternoon
+Sarah sits by the window wearing a blue blazer. She picks up a glass with her left hand.
+Her notebook rests on the table beside her.
+SARAH holds glass in left hand, wears blue blazer, at frame left.
+MARCUS enters wearing a grey coat, at frame right.
+
+SCENE 12 - INT. COFFEE SHOP - DAY
+LIGHTING: warm afternoon
+Sarah raises the glass and speaks. The crowd panics and rushes through the shop.
+SARAH holds glass in left hand, wears blue blazer, at frame left.
+MARCUS wears grey coat, at frame right.
+
+SCENE 13 - INT. COFFEE SHOP - DAY
+LIGHTING: warm afternoon
+Marcus reaches for the notebook on the table.
+SARAH holds glass in left hand, wears blue blazer, at frame left.
+MARCUS holds notebook in right hand, wears grey coat, at frame right.
+
+SCENE 14 - EXT. STREET - DAY
+LIGHTING: overcast
+Sarah removes her blue blazer and steps outside into the rain.
+SARAH wears grey shirt, at frame left.
+
+SCENE 15 - EXT. STREET - DAY
+LIGHTING: overcast
+They walk together toward the station.
+SARAH wears grey shirt, at frame left.
+MARCUS holds notebook in right hand, wears grey coat, at frame right.

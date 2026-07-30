@@ -1,3 +1,5 @@
+.gitignore
+
 VERSE_Continuity_AI_Engineer_Plan.md
 .claude
 __pycache__/
@@ -11,3 +13,5 @@ venv/
 *.db
 *.sqlite3
 .env
+
+CLAUDE.md

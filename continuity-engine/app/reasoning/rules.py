@@ -124,7 +124,12 @@ def rule(
 
 
 def _mismatch(ctx: RuleContext) -> tuple[object, object] | None:
-    """Shared precondition: a trusted expectation that the footage contradicts."""
+    """Shared precondition: a trusted expectation that the footage contradicts.
+
+    Returns the *display* values (the producer's original wording), not the
+    normalised keys — "blue blazer", not "blue_jacket". Comparison still runs
+    on the normalised forms.
+    """
     slot = ctx.slot
     if not slot.has_conflict_candidates:
         return None
@@ -134,7 +139,18 @@ def _mismatch(ctx: RuleContext) -> tuple[object, object] | None:
         return None
     if observed.confidence < ctx.config.threshold("min_observation_confidence", 0.35):
         return None
-    return expected.value, observed.value
+    return _display(expected), _display(observed)
+
+
+def _entity_name(ctx: RuleContext) -> str:
+    """Human-facing entity name for explanations."""
+    anchor = ctx.slot.expected or ctx.slot.observed
+    return anchor.entity.name if anchor else ctx.slot.entity_key.replace("_", " ").title()
+
+
+def _display(fact) -> object:
+    """Original wording when we have it, normalised value otherwise."""
+    return fact.raw_value if fact.raw_value is not None else fact.value
 
 
 def _confidence(ctx: RuleContext) -> float:
@@ -152,7 +168,7 @@ def hand_mismatch(ctx: RuleContext) -> RuleResult | None:
     if values is None:
         return None
     expected, observed = values
-    name = ctx.slot.entity_key.replace("_", " ")
+    name = _entity_name(ctx)
     return RuleResult(
         rule_id="hand_mismatch",
         category=Category.PROPS,
@@ -212,14 +228,14 @@ def costume_mismatch(ctx: RuleContext) -> RuleResult | None:
     if values is None:
         return None
     expected, observed = values
-    name = ctx.slot.entity_key.replace("_", " ")
+    name = _entity_name(ctx)
     return RuleResult(
         rule_id="costume_mismatch",
         category=Category.COSTUME,
         severity=Severity.MEDIUM,
         confidence=_confidence(ctx),
         explanation=(
-            f"{name.title()} is expected to wear '{expected}' but the footage shows '{observed}', "
+            f"{name} is expected to wear '{expected}' but the footage shows '{observed}', "
             "with no scripted costume change in between."
         ),
         suggested_fix=f"Confirm the wardrobe change was intentional, otherwise restore '{expected}'.",

@@ -86,6 +86,35 @@ def test_panic_scene_creates_temporary_assumption(engine: ContinuityEngine):
     assert not assumption.is_active_at(99), "assumptions must expire"
 
 
+def test_assumptions_do_not_apply_retroactively(engine: ContinuityEngine):
+    """Regression: a scene-14 disturbance excused a scene-12 mismatch.
+
+    `is_active_at` had no lower bound, so every assumption reached backwards
+    through the whole production.
+    """
+    engine.ingest_script(script_scene("S1", 1, held_in_hand="left"))
+    engine.ingest_footage(footage_scene("S1", 1, hand="right"))
+    engine.ingest_script(
+        script_scene("S5", 5, held_in_hand="left", action="The crowd panics and rushes out.")
+    )
+
+    issue = find_issue(engine.analyse("S1"), "hand_mismatch")
+    assert issue is not None
+    assert issue.mitigated_by == [], "a later scene cannot excuse an earlier one"
+
+
+def test_explanations_use_original_wording(engine: ContinuityEngine):
+    """Normalised keys ('blue_jacket') must not leak into user-facing text."""
+    engine.ingest_script(script_scene("S1", 1, wears="blue blazer"))
+    engine.ingest_footage(footage_scene("S1", 1, wears="red cardigan"))
+
+    issue = find_issue(engine.analyse("S1"), "costume_mismatch")
+    assert issue is not None
+    assert "blue blazer" in issue.explanation
+    assert "blue_jacket" not in issue.explanation
+    assert "Sarah" in issue.explanation, "use the entity's real name, not its key"
+
+
 def test_trigger_words_need_whole_word_match(engine: ContinuityEngine):
     """Regression: 'window' contained 'wind' and raised a false storm assumption.
 
