@@ -13,6 +13,7 @@
 <br>
 
 ![IBM Granite](https://img.shields.io/badge/IBM-Granite%203.1-5C2D91?style=for-the-badge)
+![LangChain](https://img.shields.io/badge/LangChain-Orchestration-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
 ![Open Source](https://img.shields.io/badge/Open%20Source-LLM-28A745?style=for-the-badge)
 ![Explainable AI](https://img.shields.io/badge/Explainable-AI-FFB000?style=for-the-badge)
 ![Knowledge Graph](https://img.shields.io/badge/Knowledge-Graph-00A86B?style=for-the-badge)
