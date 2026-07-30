@@ -41,7 +41,18 @@ _ENTITY_LIST_KEYS = {
     "characters", "props", "costumes", "objects", "items", "wardrobe",
     "locations", "actions", "entities", "detections", "observations",
 }
-_SKIP_KEYS = _SCENE_KEYS | _SEQUENCE_KEYS | _TIME_KEYS | _CONFIDENCE_KEYS | _SOURCE_KEYS | _REFERENCE_KEYS
+# Envelope keys that describe the payload, not the production. Without these a
+# top-level `project_id` becomes a fact on a phantom "unknown_scene" entity.
+_ENVELOPE_KEYS = {
+    "project_id", "project", "scene_count", "frame_count", "frames_analysed",
+    "filename", "file_name", "engine_version", "extractor", "version", "errors",
+}
+# Consumed by `_resolve_entity` to type the node; not a claim about the entity.
+_TYPE_KEYS = {"type", "entity_type"}
+_SKIP_KEYS = (
+    _SCENE_KEYS | _SEQUENCE_KEYS | _TIME_KEYS | _CONFIDENCE_KEYS
+    | _SOURCE_KEYS | _REFERENCE_KEYS | _ENVELOPE_KEYS | _TYPE_KEYS
+)
 
 
 class _Context:

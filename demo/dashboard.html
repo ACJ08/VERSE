@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}</style>
+</head>
+<body>
+<title>VERSE — Continuity Report</title>
+
+<style>
+  /* ---- tokens ---------------------------------------------------------- */
+  :root {
+    --ink: #141a21;
+    --ink-soft: #4a5765;
+    --ink-faint: #7e8b99;
+    --ground: #f2f4f7;
+    --surface: #ffffff;
+    --line: #d9dfe6;
+    --line-soft: #e7ecf1;
+    --accent: #1f7a88;
+    --accent-soft: #e2f0f2;
+
+    --sev-low: #6f7d8d;
+    --sev-medium: #b07c1e;
+    --sev-high: #c4561f;
+    --sev-critical: #a82a25;
+    --good: #3f7d4e;
+
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --r: 3px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e4eaf1;
+      --ink-soft: #9aa8b8;
+      --ink-faint: #6d7b8b;
+      --ground: #0f141a;
+      --surface: #171e26;
+      --line: #2a343f;
+      --line-soft: #212a34;
+      --accent: #4fb3c1;
+      --accent-soft: #16333a;
+
+      --sev-low: #8494a6;
+      --sev-medium: #d6a33c;
+      --sev-high: #e4763c;
+      --sev-critical: #e05c53;
+      --good: #6aab78;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink: #e4eaf1; --ink-soft: #9aa8b8; --ink-faint: #6d7b8b;
+    --ground: #0f141a; --surface: #171e26; --line: #2a343f; --line-soft: #212a34;
+    --accent: #4fb3c1; --accent-soft: #16333a;
+    --sev-low: #8494a6; --sev-medium: #d6a33c; --sev-high: #e4763c;
+    --sev-critical: #e05c53; --good: #6aab78;
+  }
+
+  :root[data-theme="light"] {
+    --ink: #141a21; --ink-soft: #4a5765; --ink-faint: #7e8b99;
+    --ground: #f2f4f7; --surface: #ffffff; --line: #d9dfe6; --line-soft: #e7ecf1;
+    --accent: #1f7a88; --accent-soft: #e2f0f2;
+    --sev-low: #6f7d8d; --sev-medium: #b07c1e; --sev-high: #c4561f;
+    --sev-critical: #a82a25; --good: #3f7d4e;
+  }
+
+  /* ---- base ------------------------------------------------------------ */
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: clamp(20px, 4vw, 44px) clamp(16px, 3vw, 28px) 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ---- masthead -------------------------------------------------------- */
+  .masthead {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .masthead h1 {
+    font-family: var(--mono);
+    font-size: clamp(26px, 4vw, 38px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    text-wrap: balance;
+  }
+
+  .masthead h1 span { color: var(--accent); }
+
+  .slate {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  /* ---- score band ------------------------------------------------------ */
+  .band {
+    display: grid;
+    grid-template-columns: minmax(190px, 250px) 1fr;
+    gap: clamp(20px, 4vw, 40px);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: clamp(18px, 3vw, 28px);
+  }
+
+  @media (max-width: 720px) { .band { grid-template-columns: 1fr; } }
+
+  .score-figure { display: flex; flex-direction: column; gap: 6px; }
+
+  .score-value {
+    font-family: var(--mono);
+    font-size: clamp(52px, 9vw, 76px);
+    font-weight: 600;
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    color: var(--good);
+  }
+
+  .score-value.warn { color: var(--sev-medium); }
+  .score-value.bad { color: var(--sev-critical); }
+  .score-value sub { font-size: 0.3em; font-weight: 400; color: var(--ink-faint); }
+
+  .score-note {
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    max-width: 60ch;
+    border-left: 2px solid var(--line);
+    padding-left: 12px;
+  }
+
+  .bars { display: flex; flex-direction: column; gap: 9px; }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 88px 1fr 46px;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+
+  .bar-row .label { color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+  .bar-row .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .bar-row.clean .num { color: var(--ink-faint); }
+
+  .track { height: 7px; background: var(--line-soft); border-radius: 1px; overflow: hidden; }
+  .fill { height: 100%; background: var(--accent); }
+  .bar-row.clean .fill { background: var(--line); }
+
+  /* ---- scene strip ----------------------------------------------------- */
+  .strip-scroll { overflow-x: auto; padding-bottom: 4px; }
+
+  .strip {
+    display: flex;
+    gap: 6px;
+    min-width: max-content;
+  }
+
+  .scene {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--line);
+    border-radius: var(--r);
+    padding: 10px 14px 12px;
+    min-width: 132px;
+    font-family: var(--mono);
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .scene:hover { border-color: var(--accent); }
+  .scene[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+  .scene:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .scene .id { font-size: 12px; font-weight: 600; }
+  .scene .meta { font-size: 10.5px; color: var(--ink-faint); }
+  .scene .count { font-size: 10.5px; color: var(--ink-soft); }
+  .scene.clean { border-top-color: var(--good); }
+  .scene.has-medium { border-top-color: var(--sev-medium); }
+  .scene.has-high { border-top-color: var(--sev-high); }
+
+  /* ---- filters --------------------------------------------------------- */
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 5px 11px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+
+  .chip:hover { border-color: var(--accent); color: var(--ink); }
+  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--ground); }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- issues ---------------------------------------------------------- */
+  .issues { display: flex; flex-direction: column; gap: 10px; }
+
+  .issue {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--sev);
+    border-radius: var(--r);
+    padding: 16px clamp(14px, 2vw, 20px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .issue[data-severity="low"] { --sev: var(--sev-low); }
+  .issue[data-severity="medium"] { --sev: var(--sev-medium); }
+  .issue[data-severity="high"] { --sev: var(--sev-high); }
+  .issue[data-severity="critical"] { --sev: var(--sev-critical); }
+
+  .issue-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .issue-type { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .issue-where { color: var(--ink-faint); }
+  .issue-head .spacer { flex: 1; }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+  }
+
+  .tag.sev { color: var(--sev); }
+  .tag.mit { color: var(--accent); }
+  .tag.rep { color: var(--ink-soft); }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: stretch;
+    gap: 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+
+  @media (max-width: 620px) {
+    .compare { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); }
+  }
+
+  .side { padding: 11px 14px; display: flex; flex-direction: column; gap: 3px; }
+  .side.observed { background: var(--line-soft); }
+
+  .side .cap {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .side .val {
+    font-family: var(--mono);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .side .val.absent { color: var(--sev-critical); font-style: italic; font-weight: 400; }
+  .side .src { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+
+  .arrow {
+    align-self: center;
+    font-family: var(--mono);
+    color: var(--ink-faint);
+    padding: 0 4px;
+  }
+
+  .prose { font-size: 13.5px; color: var(--ink-soft); max-width: 74ch; }
+
+  .fix {
+    font-size: 13.5px;
+    background: var(--accent-soft);
+    border-radius: var(--r);
+    padding: 10px 13px;
+    display: flex;
+    gap: 9px;
+  }
+
+  .fix .cap {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    flex-shrink: 0;
+    padding-top: 3px;
+  }
+
+  .metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--line-soft);
+    padding-top: 10px;
+  }
+
+  .metrics b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .empty {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-faint);
+    padding: 32px;
+    text-align: center;
+    border: 1px dashed var(--line);
+    border-radius: var(--r);
+  }
+
+  /* ---- assumptions ----------------------------------------------------- */
+  .assumptions { display: flex; flex-direction: column; gap: 8px; }
+
+  .assumption {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .assumption .desc { font-size: 13.5px; }
+
+  .assumption .quote {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    border-left: 2px solid var(--accent);
+    padding-left: 10px;
+  }
+
+  .assumption .foot { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+
+  section > h2 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding-bottom: 8px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  section > h2 .n { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  footer {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  footer b { color: var(--ink-soft); font-weight: 600; }
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">Continuity report &middot; engine v0.1.0</div>
+      <h1>VERSE <span>/</span> The Last Order</h1>
+    </div>
+    <div class="slate">
+      <span id="slate-project">VERSE_DEMO</span>
+      <span id="slate-scope">5 scenes analysed</span>
+      <span id="slate-graph">—</span>
+    </div>
+  </header>
+
+  <div class="band">
+    <div class="score-figure">
+      <div class="eyebrow">Overall continuity</div>
+      <div class="score-value" id="score">—<sub>/100</sub></div>
+      <div class="score-note" id="summary"></div>
+    </div>
+    <div>
+      <div class="eyebrow" style="margin-bottom:10px">By category</div>
+      <div class="bars" id="bars"></div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Screenplay timeline <span class="n" id="strip-hint">click a scene to filter</span></h2>
+    <div class="strip-scroll"><div class="strip" id="strip"></div></div>
+  </section>
+
+  <section>
+    <h2>Flagged issues <span class="n" id="issue-count"></span></h2>
+    <div class="filters" id="filters"></div>
+    <div class="issues" id="issues" style="margin-top:14px"></div>
+  </section>
+
+  <section>
+    <h2>Temporary assumptions <span class="n" id="assumption-count"></span></h2>
+    <div class="assumptions" id="assumptions"></div>
+  </section>
+
+  <footer>
+    <div><b>Real:</b> the continuity engine (team 3) — graph, reasoning, scoring, feedback.</div>
+    <div><b>Mocked:</b> script extraction (team 1) and vision detection (team 2) are stand-ins that plant known errors so the engine can be checked against ground truth.</div>
+    <div><b>Verification:</b> <span id="verify"></span></div>
+  </footer>
+
+</div>
+
+<script id="verse-data" type="application/json">{"report":{"project_id":"VERSE_DEMO","scene_id":null,"overall_score":87.6,"category_scores":{"props":55.6,"costume":78.4,"movement":100.0,"spatial":91.2,"narrative":100.0,"lighting":100.0,"other":100.0},"issues":[{"issue_id":"ISSUE_22D049CA","category":"props","type":"hand_mismatch","severity":"medium","confidence":0.704,"entity":{"type":"character","name":"Sarah","key":"sarah","raw_type":null},"attribute":"held_in_hand","scene_id":"SCENE_012","expected":{"value":"left","source":"script","source_reference":"Scene SCENE_012","confidence":1.0},"observed":{"value":"right","source":"footage","source_reference":"00:32.0","confidence":0.88},"explanation":"The script places the item in Sarah's left hand, while the footage shows it in the right hand. Expected value from script (Scene SCENE_012). Observed in footage at 00:32.0 with 88% confidence. Score impact was reduced because narrative context may explain the change.","suggested_fix":"Review the shot and move the item to the left hand unless the change is intentional. Narrative context may already explain this \u2014 confirm before changing anything.","status":"pending_review","occurrences":1,"related_scene_ids":["SCENE_012"],"mitigated_by":["ASSUM_b2ffaee0"],"score_impact":8.45,"supporting_fact_ids":["FACT_b73813f1e6","FACT_269b386914"]},{"issue_id":"ISSUE_12A0E414","category":"props","type":"hand_mismatch","severity":"high","confidence":0.72,"entity":{"type":"character","name":"Sarah","key":"sarah","raw_type":null},"attribute":"held_in_hand","scene_id":"SCENE_013","expected":{"value":"left","source":"script","source_reference":"Scene SCENE_013","confidence":1.0},"observed":{"value":"right","source":"footage","source_reference":"00:55.6","confidence":0.9},"explanation":"The script places the item in Sarah's left hand, while the footage shows it in the right hand. Expected value from script (Scene SCENE_013). Observed in footage at 00:55.6 with 90% confidence. Seen in 2 scenes (SCENE_012, SCENE_013). Score impact was reduced because narrative context may explain the change.","suggested_fix":"Priority: Review the shot and move the item to the left hand unless the change is intentional. Narrative context may already explain this \u2014 confirm before changing anything.","status":"pending_review","occurrences":2,"related_scene_ids":["SCENE_012","SCENE_013"],"mitigated_by":["ASSUM_b2ffaee0"],"score_impact":18.0,"supporting_fact_ids":["FACT_8240ca6cff","FACT_ab3fe9c71d"]},{"issue_id":"ISSUE_475B2502","category":"costume","type":"costume_mismatch","severity":"medium","confidence":0.72,"entity":{"type":"character","name":"Sarah","key":"sarah","raw_type":null},"attribute":"wears","scene_id":"SCENE_013","expected":{"value":"blue blazer","source":"script","source_reference":"Scene SCENE_013","confidence":1.0},"observed":{"value":"red cardigan","source":"footage","source_reference":"00:55.6","confidence":0.9},"explanation":"Sarah is expected to wear 'blue blazer' but the footage shows 'red cardigan', with no scripted costume change in between. Expected value from script (Scene SCENE_013). Observed in footage at 00:55.6 with 90% confidence.","suggested_fix":"Confirm the wardrobe change was intentional, otherwise restore 'blue blazer'.","status":"pending_review","occurrences":1,"related_scene_ids":["SCENE_013"],"mitigated_by":[],"score_impact":21.6,"supporting_fact_ids":["FACT_f63faee6c4","FACT_95e2027afe"]},{"issue_id":"ISSUE_3D2728A7","category":"spatial","type":"screen_direction_mismatch","severity":"medium","confidence":0.736,"entity":{"type":"character","name":"Marcus","key":"marcus","raw_type":null},"attribute":"screen_position","scene_id":"SCENE_013","expected":{"value":"frame right","source":"script","source_reference":"Scene SCENE_013","confidence":1.0},"observed":{"value":"frame left","source":"footage","source_reference":"00:55.6","confidence":0.92},"explanation":"Screen position changed from 'frame right' to 'frame left' without a scripted move, which can break the 180-degree rule. Expected value from script (Scene SCENE_013). Observed in footage at 00:55.6 with 92% confidence. Score impact was reduced because narrative context may explain the change.","suggested_fix":"Verify the camera side and character blocking between shots. Narrative context may already explain this \u2014 confirm before changing anything.","status":"pending_review","occurrences":1,"related_scene_ids":["SCENE_013"],"mitigated_by":["ASSUM_b2ffaee0"],"score_impact":8.83,"supporting_fact_ids":["FACT_158b40ad2c","FACT_51573a871d"]},{"issue_id":"ISSUE_544F953E","category":"props","type":"missing_object","severity":"high","confidence":0.8,"entity":{"type":"character","name":"Marcus","key":"marcus","raw_type":null},"attribute":"holds","scene_id":"SCENE_015","expected":{"value":"notebook","source":"script","source_reference":"Scene SCENE_015","confidence":1.0},"observed":{"value":null,"source":null,"source_reference":"","confidence":1.0},"explanation":"The script expects 'notebook' in this scene, but it was not detected in the footage. Expected value from script (Scene SCENE_015). Score impact was reduced because narrative context may explain the change.","suggested_fix":"Priority: Check whether 'notebook' is present in the shot. Narrative context may already explain this \u2014 confirm before changing anything.","status":"pending_review","occurrences":1,"related_scene_ids":["SCENE_015"],"mitigated_by":["ASSUM_3171e5c4"],"score_impact":18.0,"supporting_fact_ids":["FACT_99039f047a"]}],"temporary_assumptions":[{"assumption_id":"ASSUM_b2ffaee0","description":"Crowd disturbance may have moved objects and disordered the environment.","scene_id":"SCENE_012","created_at_sequence":12,"expires_after_scenes":2,"confidence":0.6,"source_text":"Sarah raises the glass and speaks. The crowd panics and rushes through the shop.","affects_categories":["props","spatial","movement"],"affects_entities":[],"active":true,"contradicted_by":null},{"assumption_id":"ASSUM_3171e5c4","description":"Environmental event may have altered the set and lighting.","scene_id":"SCENE_014","created_at_sequence":14,"expires_after_scenes":2,"confidence":0.55,"source_text":"Sarah removes her blue blazer and steps outside into the rain.","affects_categories":["props","lighting","spatial"],"affects_entities":[],"active":true,"contradicted_by":null}],"score_summary":{"main_reason":"5 continuity issues reduced the costume, props, spatial score, led by a high hand mismatch. 4 were softened by narrative context.","penalties_applied":5,"issues_mitigated":4},"generated_at":"2026-07-21T14:00:48.472289Z","engine_version":"0.1.0"},"script":{"project_id":"VERSE_DEMO","source":"script","scenes":[{"scene_id":"SCENE_011","sequence":11,"location":"coffee shop","heading":"INT. COFFEE SHOP - DAY","characters":[{"name":"Sarah","type":"character","holds":"glass","held_in_hand":"left","wears":"blue blazer","screen_position":"frame left"},{"name":"Marcus","type":"character","screen_position":"frame right"}],"props":[{"name":"glass","type":"prop","location":"held"}],"lighting":"warm afternoon","action":"Sarah sits by the window wearing a blue blazer. She picks up a glass with her left hand. Her notebook rests on the table beside her."},{"scene_id":"SCENE_012","sequence":12,"location":"coffee shop","heading":"INT. COFFEE SHOP - DAY","characters":[{"name":"Sarah","type":"character","holds":"glass","held_in_hand":"left","wears":"blue blazer","screen_position":"frame left"},{"name":"Marcus","type":"character","wears":"grey coat","screen_position":"frame right"}],"props":[{"name":"glass","type":"prop","location":"held"}],"lighting":"warm afternoon","action":"Sarah raises the glass and speaks. The crowd panics and rushes through the shop."},{"scene_id":"SCENE_013","sequence":13,"location":"coffee shop","heading":"INT. COFFEE SHOP - DAY","characters":[{"name":"Sarah","type":"character","holds":"glass","held_in_hand":"left","wears":"blue blazer","screen_position":"frame left"},{"name":"Marcus","type":"character","holds":"notebook","held_in_hand":"right","wears":"grey coat","screen_position":"frame right"}],"props":[{"name":"glass","type":"prop","location":"held"},{"name":"notebook","type":"prop","location":"held"}],"lighting":"warm afternoon","action":"Marcus reaches for the notebook on the table."},{"scene_id":"SCENE_014","sequence":14,"location":"street","heading":"EXT. STREET - DAY","characters":[{"name":"Sarah","type":"character","wears":"grey shirt","screen_position":"frame left"}],"props":[],"lighting":"overcast","action":"Sarah removes her blue blazer and steps outside into the rain."},{"scene_id":"SCENE_015","sequence":15,"location":"street","heading":"EXT. STREET - DAY","characters":[{"name":"Sarah","type":"character","wears":"grey shirt","screen_position":"frame left"},{"name":"Marcus","type":"character","holds":"notebook","held_in_hand":"right","wears":"grey coat","screen_position":"frame right"}],"props":[{"name":"notebook","type":"prop","location":"held"}],"lighting":"overcast","action":"They walk together toward the station."}]},"footage":{"project_id":"VERSE_DEMO","source":"footage","observations":[{"scene_id":"SCENE_011","sequence":11,"timestamp":"00:08.4","detections":[{"name":"Sarah","type":"character","holds":"glass","hand":"left","wears":"blue blazer","position":"frame left","confidence":0.89},{"name":"Marcus","type":"character","position":"frame right","confidence":0.9}]},{"scene_id":"SCENE_012","sequence":12,"timestamp":"00:32.0","detections":[{"name":"Sarah","type":"character","holds":"glass","hand":"right","wears":"blue blazer","position":"frame left","confidence":0.88},{"name":"Marcus","type":"character","wears":"grey coat","position":"frame right","confidence":0.9}]},{"scene_id":"SCENE_013","sequence":13,"timestamp":"00:55.6","detections":[{"name":"Sarah","type":"character","holds":"glass","hand":"right","wears":"red cardigan","position":"frame left","confidence":0.9},{"name":"Marcus","type":"character","holds":"notebook","hand":"right","wears":"grey coat","position":"frame left","confidence":0.92}]},{"scene_id":"SCENE_014","sequence":14,"timestamp":"01:19.2","detections":[{"name":"Sarah","type":"character","wears":"grey shirt","position":"frame left","confidence":0.94}]},{"scene_id":"SCENE_015","sequence":15,"timestamp":"01:42.8","detections":[{"name":"Sarah","type":"character","wears":"grey shirt","position":"frame left","confidence":0.92},{"name":"Marcus","type":"character","hand":"right","wears":"grey coat","position":"frame right","confidence":0.87}]}]},"stats":{"nodes":30,"edges":42,"facts":103,"scenes":5,"entities":6},"planted_errors":[{"scene_id":"SCENE_012","character":"Sarah","attribute":"held_in_hand","injected":"right"},{"scene_id":"SCENE_013","character":"Sarah","attribute":"held_in_hand","injected":"right"},{"scene_id":"SCENE_013","character":"Sarah","attribute":"wears","injected":"red cardigan"},{"scene_id":"SCENE_013","character":"Marcus","attribute":"screen_position","injected":"frame left"},{"scene_id":"SCENE_015","character":"Marcus","attribute":"holds","injected":"<removed>"}]}</script>
+
+<script>
+  (function () {
+    "use strict";
+
+    const DATA = JSON.parse(document.getElementById("verse-data").textContent);
+    const report = DATA.report;
+    const issues = report.issues.slice();
+    const scenes = DATA.script.scenes;
+
+    const $ = (id) => document.getElementById(id);
+    const el = (tag, cls, text) => {
+      const node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    const pretty = (s) => String(s).replace(/_/g, " ");
+
+    /* -- headline ------------------------------------------------------- */
+    const score = $("score");
+    score.textContent = report.overall_score.toFixed(1);
+    score.appendChild(Object.assign(document.createElement("sub"), { textContent: "/100" }));
+    if (report.overall_score < 70) score.classList.add("bad");
+    else if (report.overall_score < 90) score.classList.add("warn");
+
+    $("summary").textContent = report.score_summary.main_reason;
+    $("slate-project").textContent = report.project_id;
+    $("slate-scope").textContent = scenes.length + " scenes analysed";
+    $("slate-graph").textContent =
+      DATA.stats.facts + " facts · " + DATA.stats.entities + " entities";
+
+    /* -- category bars -------------------------------------------------- */
+    const bars = $("bars");
+    Object.entries(report.category_scores)
+      .sort((a, b) => a[1] - b[1])
+      .forEach(([name, value]) => {
+        const row = el("div", "bar-row" + (value === 100 ? " clean" : ""));
+        row.appendChild(el("span", "label", name));
+        const track = el("div", "track");
+        const fill = el("div", "fill");
+        fill.style.width = value + "%";
+        track.appendChild(fill);
+        row.appendChild(track);
+        row.appendChild(el("span", "num", value.toFixed(1)));
+        bars.appendChild(row);
+      });
+
+    /* -- state ---------------------------------------------------------- */
+    const state = { severity: "all", category: "all", scene: null };
+
+    const worst = (list) =>
+      list.some((i) => i.severity === "critical" || i.severity === "high")
+        ? "has-high"
+        : list.length
+        ? "has-medium"
+        : "clean";
+
+    /* -- scene strip ---------------------------------------------------- */
+    const strip = $("strip");
+    scenes.forEach((scene) => {
+      const mine = issues.filter((i) => i.scene_id === scene.scene_id);
+      const button = el("button", "scene " + worst(mine));
+      button.type = "button";
+      button.setAttribute("aria-pressed", "false");
+      button.dataset.scene = scene.scene_id;
+      button.appendChild(el("span", "id", scene.scene_id.replace("SCENE_", "SC ")));
+      button.appendChild(el("span", "meta", scene.location));
+      button.appendChild(
+        el("span", "count", mine.length ? mine.length + " flagged" : "clear")
+      );
+      button.addEventListener("click", () => {
+        state.scene = state.scene === scene.scene_id ? null : scene.scene_id;
+        render();
+      });
+      strip.appendChild(button);
+    });
+
+    /* -- filters -------------------------------------------------------- */
+    const groups = [
+      { key: "severity", values: ["all", "high", "medium"] },
+      { key: "category", values: ["all"].concat([...new Set(issues.map((i) => i.category))]) },
+    ];
+
+    const filters = $("filters");
+    groups.forEach((group, index) => {
+      if (index) {
+        const divider = el("span", "eyebrow", "|");
+        divider.style.padding = "0 4px";
+        filters.appendChild(divider);
+      }
+      group.values.forEach((value) => {
+        const chip = el("button", "chip", value === "all" ? "all " + group.key : value);
+        chip.type = "button";
+        chip.dataset.group = group.key;
+        chip.dataset.value = value;
+        chip.addEventListener("click", () => {
+          state[group.key] = value;
+          render();
+        });
+        filters.appendChild(chip);
+      });
+    });
+
+    /* -- issue rendering ------------------------------------------------ */
+    function sideNode(kind, ref) {
+      const side = el("div", "side " + kind);
+      side.appendChild(el("span", "cap", kind));
+      if (ref.value === null || ref.value === undefined) {
+        side.appendChild(el("span", "val absent", "not detected"));
+        side.appendChild(el("span", "src", "no observation to cite"));
+      } else {
+        side.appendChild(el("span", "val", pretty(ref.value)));
+        side.appendChild(
+          el(
+            "span",
+            "src",
+            ref.source +
+              (ref.source_reference ? " · " + ref.source_reference : "") +
+              (kind === "observed" ? " · " + Math.round(ref.confidence * 100) + "%" : "")
+          )
+        );
+      }
+      return side;
+    }
+
+    function issueNode(issue) {
+      const card = el("article", "issue");
+      card.dataset.severity = issue.severity;
+
+      const head = el("div", "issue-head");
+      head.appendChild(el("span", "issue-type", pretty(issue.type)));
+      head.appendChild(
+        el("span", "issue-where", issue.scene_id.replace("SCENE_", "SC ") + " · " + issue.entity.name)
+      );
+      head.appendChild(el("span", "spacer"));
+      if (issue.occurrences > 1) {
+        head.appendChild(el("span", "tag rep", "repeats ×" + issue.occurrences));
+      }
+      if (issue.mitigated_by.length) {
+        head.appendChild(el("span", "tag mit", "context-softened"));
+      }
+      head.appendChild(el("span", "tag sev", issue.severity));
+      card.appendChild(head);
+
+      const compare = el("div", "compare");
+      compare.appendChild(sideNode("expected", issue.expected));
+      compare.appendChild(el("div", "arrow", "→"));
+      compare.appendChild(sideNode("observed", issue.observed));
+      card.appendChild(compare);
+
+      card.appendChild(el("p", "prose", issue.explanation));
+
+      const fix = el("div", "fix");
+      fix.appendChild(el("span", "cap", "fix"));
+      fix.appendChild(el("span", null, issue.suggested_fix));
+      card.appendChild(fix);
+
+      const metrics = el("div", "metrics");
+      [
+        ["category", issue.category],
+        ["attribute", pretty(issue.attribute)],
+        ["confidence", Math.round(issue.confidence * 100) + "%"],
+        ["score impact", "−" + issue.score_impact.toFixed(2)],
+        ["status", pretty(issue.status)],
+      ].forEach(([label, value]) => {
+        const item = el("span", null, label + " ");
+        item.appendChild(Object.assign(document.createElement("b"), { textContent: value }));
+        metrics.appendChild(item);
+      });
+      card.appendChild(metrics);
+
+      return card;
+    }
+
+    /* -- render --------------------------------------------------------- */
+    function render() {
+      const visible = issues.filter(
+        (i) =>
+          (state.severity === "all" || i.severity === state.severity) &&
+          (state.category === "all" || i.category === state.category) &&
+          (state.scene === null || i.scene_id === state.scene)
+      );
+
+      const list = $("issues");
+      list.textContent = "";
+      if (!visible.length) {
+        list.appendChild(el("div", "empty", "No issues match these filters."));
+      } else {
+        visible
+          .slice()
+          .sort((a, b) => b.score_impact - a.score_impact)
+          .forEach((issue) => list.appendChild(issueNode(issue)));
+      }
+
+      $("issue-count").textContent =
+        visible.length === issues.length
+          ? issues.length + " total"
+          : visible.length + " of " + issues.length;
+
+      filters.querySelectorAll(".chip").forEach((chip) => {
+        chip.setAttribute(
+          "aria-pressed",
+          String(state[chip.dataset.group] === chip.dataset.value)
+        );
+      });
+
+      strip.querySelectorAll(".scene").forEach((button) => {
+        button.setAttribute("aria-pressed", String(state.scene === button.dataset.scene));
+      });
+    }
+
+    /* -- assumptions ---------------------------------------------------- */
+    const assumptions = $("assumptions");
+    $("assumption-count").textContent = report.temporary_assumptions.length + " active";
+    report.temporary_assumptions.forEach((assumption) => {
+      const card = el("div", "assumption");
+      card.appendChild(el("div", "desc", assumption.description));
+      card.appendChild(el("div", "quote", "“" + assumption.source_text + "”"));
+      card.appendChild(
+        el(
+          "div",
+          "foot",
+          assumption.scene_id.replace("SCENE_", "SC ") +
+            " · confidence " +
+            Math.round(assumption.confidence * 100) +
+            "% · expires after " +
+            assumption.expires_after_scenes +
+            " scenes · affects " +
+            assumption.affects_categories.join(", ")
+        )
+      );
+      assumptions.appendChild(card);
+    });
+
+    /* -- verification --------------------------------------------------- */
+    const found = DATA.planted_errors.filter((planted) =>
+      issues.some(
+        (i) =>
+          i.scene_id === planted.scene_id &&
+          i.entity.name.toLowerCase() === planted.character.toLowerCase()
+      )
+    ).length;
+    $("verify").textContent =
+      found + " of " + DATA.planted_errors.length +
+      " deliberately planted continuity errors were detected; " +
+      report.score_summary.issues_mitigated +
+      " issues were softened by narrative context rather than hidden.";
+
+    render();
+  })();
+</script>
+
+</body>
+</html>

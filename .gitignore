@@ -4,6 +4,12 @@
 # dependencies from package.json and pnpm-lock.yaml.
 
 
+# --- Local tooling / planning (team 3) --------------------------------------
+VERSE_Continuity_AI_Engineer_Plan.md
+.claude
+CLAUDE.md
+
+
 # --- Node Dependencies ------------------------------------------------------
 # Never commit node_modules -- restore with: pnpm install
 node_modules/
@@ -146,6 +152,8 @@ dmypy.json
 continuity-engine/verse.db
 continuity-engine/verse.db-wal
 continuity-engine/verse.db-shm
+*.db
+*.sqlite3
 *.db-wal
 *.db-shm
 

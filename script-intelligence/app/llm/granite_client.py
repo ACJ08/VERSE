@@ -18,6 +18,7 @@ from app.core.logging import get_logger, timed_execution
 from app.llm.retry import retry_with_backoff
 from app.prompts.templates import CONTINUITY_SYSTEM_PROMPT, build_user_prompt
 from app.parsers.scene_splitter import parse_scene_metadata
+from app.utils.text_utils import extract_action_prose
 from app.schemas.continuity import (
     Character,
     ContinuityNote,
@@ -189,6 +190,9 @@ class GraniteClient:
             lighting=lighting,
             continuity_notes=continuity_notes,
             confidence_score=confidence,
+            # `raw_scene_text` is excluded from the JSON response, so the action
+            # prose is surfaced separately for downstream continuity reasoning.
+            action=extract_action_prose(scene_text),
             raw_scene_text=scene_text,
         )
 

@@ -55,20 +55,43 @@
   "custom_categories": [],
 
   "attribute_aliases": {
-    "_note": "Maps canonical attribute names to alternate field names that Team 1/2 may use. Add new entries here instead of changing parser code.",
-    "held_in_hand":   ["hand", "hand_position", "holding_hand", "which_hand", "hand_used"],
+    "_note": "Maps canonical attribute names to alternate field names that Team 1/2 may use. Add new entries here instead of changing parser code. Keys starting with _ are documentation and are ignored.",
+    "held_in_hand":   ["hand", "hand_position", "holding_hand", "which_hand", "hand_used", "hand_usage"],
     "holds":          ["holding", "prop_held", "carried_item", "object_in_hand"],
     "wears":          ["costume", "wardrobe", "outfit", "clothing", "attire"],
     "location":       ["place", "setting", "scene_location", "where"],
     "screen_position":["position", "frame_position", "screen_direction", "blocking"],
     "movement":       ["motion", "action_movement", "moves"],
-    "lighting":       ["light", "light_state", "illumination"]
+    "lighting":       ["light", "light_state", "illumination"],
+
+    "_note_prose": "Free-text screenplay direction. Vision never produces these, so they are stored and displayed but never compared — see app/adapters/base.py.",
+    "blocking_description": ["blocking_note", "staging", "position_description", "position_prose"],
+    "movement_description": ["movement_note", "movement_prose", "action_description"],
+
+    "_note_descriptive": "Attributes both pipelines can produce but no dedicated rule watches; the custom-attribute catch-all handles them.",
+    "prop_state":     ["state", "condition", "object_state"],
+    "owner":          ["held_by", "belongs_to", "carried_by"],
+    "emotional_state":["emotion", "mood_state", "affect"],
+    "time_of_day":    ["tod", "day_night", "scene_time"],
+    "slugline":       ["heading", "scene_heading", "slug_line"],
+
+    "_note_neighbours": "Declared explicitly because fuzzy matching would otherwise fold them into location/lighting and pollute those comparisons (sub_location -> location, lighting_mood -> lighting).",
+    "sub_location":   ["sublocation", "secondary_location"],
+    "lighting_mood":  ["light_mood"],
+    "lighting_source":["light_source"],
+    "int_ext":        ["interior_exterior", "intext"]
   },
 
   "value_synonyms": {
-    "_note": "Groups of values treated as equivalent during comparison. Add production-specific synonyms here (e.g. character costume variants across scenes).",
+    "_note": "Groups of values treated as equivalent during comparison. Add production-specific synonyms here (e.g. character costume variants across scenes). Keys starting with _ are documentation and are ignored.",
     "left":        ["left hand", "l", "left-hand", "lh"],
     "right":       ["right hand", "r", "right-hand", "rh"],
-    "blue_jacket": ["blue blazer", "navy jacket", "dark blue coat", "navy blazer"]
+    "blue_jacket": ["blue blazer", "navy jacket", "dark blue coat", "navy blazer"],
+    "glass":       ["wine glass", "drinking glass", "tumbler", "water glass"]
+  },
+
+  "entity_aliases": {
+    "_note": "Joins the anonymous track ids the vision pipeline emits to the names the script uses. Per-request overrides can be sent to the ingest endpoints instead of edited here.",
+    "_example": ["PERSON_1", "PERSON_2"]
   }
 }

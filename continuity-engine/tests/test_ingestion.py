@@ -85,6 +85,59 @@ def test_entity_matcher_merges_aliases_within_a_type(config: ProjectConfig):
     assert len(matcher.entities) == 1
 
 
+def test_distinct_characters_never_merge(config: ProjectConfig):
+    """Regression: "Sarah" and "Marcus" merged into one entity.
+
+    The one-letter synonym "r" (for "right hand") matched as a substring inside
+    both names, so the semantic matcher scored them 0.9. Every fact about one
+    character was then attributed to the other, corrupting the whole report.
+    """
+    from app.ingestion.entity_matcher import keyword_semantic_matcher
+
+    matcher = EntityMatcher(config, keyword_semantic_matcher(config.value_synonyms))
+    sarah = matcher.resolve(EntityRef(type=EntityType.CHARACTER, name="Sarah"))
+    marcus = matcher.resolve(EntityRef(type=EntityType.CHARACTER, name="Marcus"))
+
+    assert sarah.key != marcus.key
+    assert len(matcher.entities) == 2
+
+
+def test_semantic_matcher_still_matches_real_synonyms(config: ProjectConfig):
+    """The word-boundary fix must not disable legitimate synonym matching."""
+    from app.ingestion.entity_matcher import keyword_semantic_matcher
+
+    match = keyword_semantic_matcher(config.value_synonyms)
+    assert match("blue blazer", "navy jacket") > 0.8
+    assert match("Sarah", "Marcus") == 0.0
+
+
+def test_two_characters_keep_separate_facts(engine_factory=None):
+    """End-to-end guard: each character's attributes stay their own."""
+    from app.engine import ContinuityEngine
+
+    engine = ContinuityEngine()
+    engine.ingest_script(
+        {
+            "scenes": [
+                {
+                    "scene_id": "S1",
+                    "sequence": 1,
+                    "characters": [
+                        {"name": "Sarah", "type": "character", "wears": "blue blazer"},
+                        {"name": "Marcus", "type": "character", "wears": "grey coat"},
+                    ],
+                }
+            ]
+        },
+        SourceType.SCRIPT,
+    )
+
+    sarah = engine.graph.facts_for("sarah", "wears", "S1")
+    marcus = engine.graph.facts_for("marcus", "wears", "S1")
+    assert [f.raw_value for f in sarah] == ["blue blazer"]
+    assert [f.raw_value for f in marcus] == ["grey coat"]
+
+
 def test_entity_matcher_keeps_types_apart(config: ProjectConfig):
     """A prop named Sarah must never merge into the character Sarah."""
     matcher = EntityMatcher(config)

@@ -12,8 +12,8 @@
 
 <br>
 
-![IBM](https://img.shields.io/badge/IBM-watsonx-1261FE?style=for-the-badge&logo=ibm&logoColor=white)
-![Granite](https://img.shields.io/badge/IBM-Granite-5C2D91?style=for-the-badge)
+![IBM Granite](https://img.shields.io/badge/IBM-Granite%203.1-5C2D91?style=for-the-badge)
+![Open Source](https://img.shields.io/badge/Open%20Source-LLM-28A745?style=for-the-badge)
 ![Explainable AI](https://img.shields.io/badge/Explainable-AI-FFB000?style=for-the-badge)
 ![Knowledge Graph](https://img.shields.io/badge/Knowledge-Graph-00A86B?style=for-the-badge)
 ![Human-in-the-Loop](https://img.shields.io/badge/Human--in--the--Loop-AI-8E44AD?style=for-the-badge)
@@ -91,7 +91,7 @@ Collaborative Dashboard
 
 #### 📖 Screenplay Understanding Engine
 
-Uses IBM Granite LLMs to analyze screenplay documents and extract structured production knowledge including:
+Uses the open-source IBM Granite 3.1 large language model to analyze screenplay documents and extract structured production knowledge including:
 
 - Characters
 - Locations
@@ -217,10 +217,10 @@ IBM Bob was used for:
 
 IBM Bob helped evaluate how IBM technologies could support the platform, including:
 
-- IBM watsonx
-- IBM Granite Models
+- IBM Granite 3.1 Open-Source Model
 - Explainable AI
-- Enterprise AI workflows
+- Human-Centered AI
+- Semantic reasoning workflows
 
 These explorations informed the final AI architecture adopted by VERSE.
 
@@ -238,19 +238,25 @@ IBM Bob also supported:
 
 ## IBM AI Technologies Used
 
+
 | IBM Technology | Purpose |
 |----------------|---------|
-| **IBM watsonx** | AI orchestration, workflow management, semantic processing |
-| **IBM Granite** | Screenplay understanding, semantic reasoning, continuity analysis |
-| **IBM Bob** | Problem framing, ideation, architecture planning, and solution refinement |
+| **IBM Granite 3.1 (Open Source)** | AI orchestration, workflow management, semantic processing, Screenplay understanding, semantic reasoning, structured information extraction, and continuity analysis |
+| **IBM Bob** | Problem framing, design thinking, ideation, architecture planning, and prototype refinement |
 
-Together, IBM's AI ecosystem enabled the team to design a trustworthy, explainable, and human-centered AI solution for intelligent filmmaking.
+Together, IBM Granite 3.1 and IBM Bob enabled the team to design a trustworthy, explainable, and human-centered AI solution for intelligent filmmaking. VERSE leverages the open-source IBM Granite 3.1 model for semantic screenplay understanding while IBM Bob supported the project's ideation, planning, and design process.
 
 ---
 
 # 🌟 Vision
 
 VERSE aims to become the intelligent semantic production memory for the filmmaking industry—helping production teams maintain continuity, reduce costly errors, and collaborate more effectively through responsible, explainable, and human-centered AI.
+
+---
+
+## 🔓 Open-Source AI Foundation
+
+VERSE is powered by the **IBM Granite 3.1 open-source large language model**, enabling transparent, accessible, and explainable AI for screenplay understanding and continuity reasoning. By leveraging an open-source foundation model, VERSE demonstrates that advanced AI capabilities for creative industries can be built without relying on proprietary orchestration platforms while maintaining a human-centered and explainable design.
 
 ---
 

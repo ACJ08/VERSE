@@ -76,6 +76,8 @@ class Normaliser:
         if a == b:
             return True
         if isinstance(a, str) and isinstance(b, str):
+            if _subsumes(a, b):
+                return True
             threshold = self._config.threshold("value_match_similarity", 0.85)
             return _similarity(a, b) >= threshold
         return False
@@ -101,6 +103,22 @@ class Normaliser:
             if score > best_score:
                 best, best_score = canonical, score
         return best if best_score >= threshold else None
+
+
+def _subsumes(a: str, b: str) -> bool:
+    """True when one value is a less detailed statement of the other.
+
+    The vision pipeline reports a dominant torso colour ("black") where the
+    script describes a garment ("black dress"). That is the same claim at a
+    coarser resolution, not a contradiction, so it must not be scored as a
+    costume error. Values that share only *some* tokens ("red dress" vs
+    "blue dress") are still a mismatch.
+    """
+    tokens_a = set(re.split(r"[_\s]+", a)) - {""}
+    tokens_b = set(re.split(r"[_\s]+", b)) - {""}
+    if not tokens_a or not tokens_b or tokens_a == tokens_b:
+        return False
+    return tokens_a <= tokens_b or tokens_b <= tokens_a
 
 
 def _similarity(a: str, b: str) -> float:

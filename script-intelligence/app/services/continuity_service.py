@@ -13,7 +13,7 @@ from app.llm.granite_client import get_client, is_granite_configured
 from app.parsers.document_parser import extract_text
 from app.parsers.scene_splitter import split_into_scenes, parse_scene_metadata
 from app.utils.file_utils import save_upload, save_extracted_text
-from app.utils.text_utils import clean_screenplay_text
+from app.utils.text_utils import clean_screenplay_text, extract_action_prose
 from app.schemas.continuity import SceneContinuity, ContinuityNote
 from app.schemas.responses import AnalyseScriptResponse
 
@@ -78,6 +78,9 @@ class ContinuityService:
                         )
                     ],
                     confidence_score=0.0,
+                    # Entities could not be extracted, but the action prose still
+                    # lets downstream reasoning place the scene and read its events.
+                    action=extract_action_prose(scene_txt),
                 )
                 return index, placeholder, f"{scene_id}: {exc}"
 

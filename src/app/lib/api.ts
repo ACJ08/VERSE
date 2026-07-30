@@ -105,6 +105,112 @@ export interface UploadResult {
   scenes_detected: number;
   facts_ingested: number;
   graph_stats: Record<string, number>;
+  /** Which extraction path ran: script-intelligence/granite, watsonx/granite, heuristic. */
+  extractor?: string;
+  scene_ids?: string[];
+  entities?: string[];
+  /** Continuity notes the script service produced. Not engine issues — model opinions. */
+  notes?: ScriptNote[];
+  /** Non-fatal problems: an offline sibling service, an unusable scene, missing aliases. */
+  warnings?: string[];
+  duplicate?: boolean;
+  report?: ContinuityReport;
+}
+
+export interface ScriptNote {
+  scene_id: string;
+  note: string;
+  severity: string;
+  category: string;
+  affected_characters: string[];
+}
+
+/** Result of ingesting footage: aggregated vision observations for one scene. */
+export interface FootageUploadResult extends UploadResult {
+  frames_analysed: number;
+  overview?: ProjectOverview;
+  scenes?: SceneView[];
+}
+
+export interface ProjectOverview {
+  scenes_total: number;
+  scenes_shot: number;
+  scenes_clean: number;
+  issues_total: number;
+  average_scene_score: number;
+  facts: number;
+  entities: number;
+  categories_at_risk: string[];
+}
+
+export interface EntityRef {
+  type: string;
+  name: string;
+  key: string;
+  raw_type: string | null;
+}
+
+/** Per-scene rollup from GET /continuity/scenes/{project_id}. */
+export interface SceneView {
+  scene_id: string;
+  sequence: number;
+  location: string | null;
+  time_of_day: string | null;
+  slugline: string | null;
+  score: number;
+  category_scores: Record<string, number>;
+  issue_count: number;
+  issues_by_severity: Record<string, number>;
+  categories: string[];
+  entities: EntityRef[];
+  sources: string[];
+  has_footage: boolean;
+  fact_count: number;
+  headline: string;
+}
+
+export interface ProjectScenes {
+  project_id: string;
+  overview: ProjectOverview;
+  scenes: SceneView[];
+}
+
+export type SlotState = "match" | "conflict" | "unverified" | "observed_only";
+
+/** One tracked attribute of one entity in one scene, with both halves and sources. */
+export interface SlotView {
+  entity: EntityRef;
+  attribute: string;
+  scene_id: string | null;
+  state: SlotState;
+  expected: { value: unknown; source: string | null; source_reference: string; confidence: number } | null;
+  observed: { value: unknown; source: string | null; source_reference: string; confidence: number } | null;
+  issue_id: string | null;
+  severity: string | null;
+  human_confirmed: boolean;
+  /** False on a `conflict` slot means "values differ but confidence was too low to flag". */
+  flagged: boolean;
+}
+
+/** Per-entity tracking state from GET /continuity/entities/{project_id}. */
+export interface EntityView {
+  entity: EntityRef;
+  scene_ids: string[];
+  slots: SlotView[];
+  attributes: string[];
+  issue_count: number;
+  conflict_count: number;
+  fact_count: number;
+  latest: Record<string, unknown>;
+}
+
+/** Result of POST /continuity/pipeline/run — ingest script + footage, then analyse. */
+export interface PipelineResult {
+  project_id: string;
+  steps: Array<Partial<UploadResult> & { source: string; facts_ingested: number }>;
+  report: ContinuityReport;
+  overview: ProjectOverview;
+  scenes: SceneView[];
 }
 
 // ─── Core fetch ────────────────────────────────────────────────────────────────
@@ -235,6 +341,53 @@ export const continuity = {
       body: JSON.stringify({ project_id, payload }),
     }),
 
+  /**
+   * Ingest a payload in a producing team's own shape — the script service's
+   * AnalyseScriptResponse, or a vision scene document. The backend adapts it
+   * before ingestion, so neither team has to reshape to the engine contract.
+   *
+   * `shape`: "script" | "footage" | "call_sheet" | "auto".
+   */
+  ingestAdapted: (
+    shape: "script" | "footage" | "call_sheet" | "auto",
+    project_id: string,
+    payload: unknown,
+    opts: { scene_id?: string; entity_aliases?: Record<string, string>; analyse?: boolean } = {},
+  ) =>
+    apiFetch<FootageUploadResult>(`/continuity/ingest-adapted/${shape}`, {
+      method: "POST",
+      body: JSON.stringify({ project_id, payload, ...opts }),
+    }),
+
+  /** Ingest script and footage together, then analyse — the full pipeline in one call. */
+  runPipeline: (
+    project_id: string,
+    payloads: { script?: unknown; footage?: unknown; call_sheet?: unknown },
+    opts: { scene_id?: string; entity_aliases?: Record<string, string> } = {},
+  ) =>
+    apiFetch<PipelineResult>("/continuity/pipeline/run", {
+      method: "POST",
+      body: JSON.stringify({ project_id, ...payloads, ...opts }),
+    }),
+
+  /** Per-scene rollup for scene tracking / timeline views. */
+  scenes: (project_id: string, analyse = false) =>
+    apiFetch<ProjectScenes>(`/continuity/scenes/${project_id}`, {
+      params: analyse ? { analyse: "true" } : undefined,
+    }),
+
+  /**
+   * Expected vs observed state per entity attribute, per scene.
+   * `entity_type` and `attribute` accept comma-separated lists, e.g.
+   * entities(id, { entity_type: "character", attribute: "wears" }) for costumes.
+   */
+  entities: (project_id: string, filters: { entity_type?: string; attribute?: string } = {}) =>
+    apiFetch<EntityView[]>(`/continuity/entities/${project_id}`, {
+      params: Object.fromEntries(
+        Object.entries(filters).filter(([, v]) => !!v) as [string, string][],
+      ),
+    }),
+
   feedback: (project_id: string, issue_id: string, action: "confirm" | "dismiss" | "resolve" | "reopen", note?: string) =>
     apiFetch<ContinuityIssue>("/continuity/feedback", {
       method: "POST",
@@ -253,11 +406,44 @@ export const continuity = {
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export const upload = {
-  screenplay: (project_id: string, file: File) => {
+  /** Screenplay → script service (or local Granite/heuristic fallback) → engine. */
+  screenplay: (project_id: string, file: File, analyse = false) => {
     const form = new FormData();
     form.append("project_id", project_id);
     form.append("file", file);
+    if (analyse) form.append("analyse", "true");
     return apiFetch<UploadResult>("/upload/screenplay", { method: "POST", body: form });
+  },
+
+  /**
+   * Footage → engine. Accepts the vision pipeline's scene_<id>.json directly, or
+   * a video clip when the backend has VISION_SERVICE_URL configured.
+   *
+   * `entityAliases` joins vision track ids to script names ({"PERSON_1": "Sarah"}).
+   * Without it the footage cannot be compared against the screenplay.
+   */
+  footage: (
+    project_id: string,
+    file: File,
+    opts: { sceneId?: string; entityAliases?: Record<string, string>; analyse?: boolean } = {},
+  ) => {
+    const form = new FormData();
+    form.append("project_id", project_id);
+    form.append("file", file);
+    if (opts.sceneId) form.append("scene_id", opts.sceneId);
+    if (opts.entityAliases && Object.keys(opts.entityAliases).length > 0) {
+      form.append("entity_aliases", JSON.stringify(opts.entityAliases));
+    }
+    form.append("analyse", String(opts.analyse ?? true));
+    return apiFetch<FootageUploadResult>("/upload/footage", { method: "POST", body: form });
+  },
+
+  /** Call sheet → script service parser → engine (call_sheet source trust). */
+  callSheet: (project_id: string, file: File) => {
+    const form = new FormData();
+    form.append("project_id", project_id);
+    form.append("file", file);
+    return apiFetch<UploadResult>("/upload/call-sheet", { method: "POST", body: form });
   },
 };
 
@@ -408,4 +594,48 @@ export function categoryScoresToRadar(scores: Record<string, number>) {
     score: Math.round(score),
     fullMark: 100,
   }));
+}
+
+/**
+ * Map a SceneView onto the dashboard's scene status vocabulary.
+ * A scene with no footage has not been shot; a shot scene is Flagged if the
+ * engine raised issues, Review if something differs below the flag threshold,
+ * and Logged when it is clean.
+ */
+export function sceneStatus(scene: SceneView): "Logged" | "Flagged" | "Review" | "Scheduled" {
+  if (!scene.has_footage) return "Scheduled";
+  if (scene.issue_count > 0) {
+    const severe = (scene.issues_by_severity.critical ?? 0) + (scene.issues_by_severity.high ?? 0);
+    return severe > 0 ? "Flagged" : "Review";
+  }
+  return "Logged";
+}
+
+/** Human-readable value for a slot half, tolerating nulls and non-strings. */
+export function slotValue(half: SlotView["expected"]): string {
+  if (!half || half.value === null || half.value === undefined) return "—";
+  return String(half.value);
+}
+
+/** Label + colour token for a slot state, used by the tracking tables. */
+export function slotStateLabel(slot: SlotView): { label: string; color: string } {
+  switch (slot.state) {
+    case "match":
+      return { label: "Verified", color: "var(--verse-emerald)" };
+    case "conflict":
+      return slot.flagged
+        ? { label: "Mismatch", color: "var(--verse-red)" }
+        : { label: "Differs (low confidence)", color: "var(--verse-gold)" };
+    case "unverified":
+      return { label: "Awaiting footage", color: "#64748B" };
+    case "observed_only":
+      return { label: "Unscripted", color: "var(--verse-violet)" };
+    default:
+      return { label: slot.state, color: "#64748B" };
+  }
+}
+
+/** Format a 0–1 confidence as a percentage string. */
+export function pct(value: number | null | undefined): string {
+  return value === null || value === undefined ? "—" : `${Math.round(value * 100)}%`;
 }

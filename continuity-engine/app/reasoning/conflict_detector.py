@@ -56,6 +56,29 @@ class ConflictDetector:
     def is_dismissed(self, entity_key: str, attribute: str, rule_id: str) -> bool:
         return (entity_key, attribute, rule_id) in self._dismissed
 
+    # -- run lifecycle ------------------------------------------------------ #
+
+    def reset(self) -> None:
+        """Clear per-pass repetition counts.
+
+        `_seen` is derived state, rebuilt on every analysis pass. Letting it
+        persist made re-running `analyse()` inflate `occurrences` each time,
+        escalating severity until everything read as critical.
+        """
+        self._seen.clear()
+
+    def seed_history(self, issues: list[Issue]) -> None:
+        """Restore repetition counts from a previous pass.
+
+        Needed when analysing a single scene: repetition is a cross-scene
+        signal, so the scenes not being re-analysed still have to count.
+        """
+        for issue in issues:
+            signature = (issue.entity.key, issue.attribute, issue.type)
+            for scene in issue.related_scene_ids or [issue.scene_id]:
+                if scene is not None and scene not in self._seen[signature]:
+                    self._seen[signature].append(scene)
+
     # -- detection ---------------------------------------------------------- #
 
     def detect_scene(self, scene_id: str) -> list[Issue]:

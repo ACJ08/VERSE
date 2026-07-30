@@ -3,3 +3,9 @@ ultralytics>=8.2.0
 mediapipe>=0.10.14
 numpy>=1.26.0,<2.0.0
 pydantic>=2.6.0
+
+# service.py — HTTP wrapper so the continuity engine can process uploads
+fastapi>=0.110,<1
+uvicorn[standard]>=0.27,<1
+python-multipart>=0.0.9,<1
+httpx>=0.27

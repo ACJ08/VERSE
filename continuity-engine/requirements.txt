@@ -9,6 +9,11 @@ bcrypt>=4.0,<6
 # optional – IBM watsonx (install separately when credentials are available)
 # ibm-watsonx-ai>=1.0
 
+# optional – LangChain LLM adapter (provider-agnostic; install the pieces you use).
+# VERSE_LLM_MODEL="anthropic:claude-sonnet-5" selects the provider at runtime.
+# langchain>=0.3
+# langchain-anthropic>=0.3   # or langchain-ibm / langchain-openai / ...
+
 # dev
 pytest>=8.0
 httpx>=0.27

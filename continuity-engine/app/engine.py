@@ -149,6 +149,13 @@ class ContinuityEngine:
         """
         self._sync_dismissals()
 
+        # Repetition counts are rebuilt per pass so `analyse()` is idempotent.
+        self.detector.reset()
+        if scene_id is not None:
+            self.detector.seed_history(
+                [i for i in self._issues.values() if i.scene_id != scene_id]
+            )
+
         issues = (
             self.detector.detect_scene(scene_id)
             if scene_id is not None
@@ -205,7 +212,6 @@ class ContinuityEngine:
         return self.graph.stats()
 
     # -- Granite extractor helpers ------------------------------------------- #
-
     @staticmethod
     def _build_granite_extractor() -> "GraniteFactExtractor | None":
         """Try to create a GraniteFactExtractor backed by the local Granite/Ollama server.
@@ -252,6 +258,15 @@ class ContinuityEngine:
                 pass  # Granite call failed — skip augmentation for this scene
 
         return facts
+    @property
+    def normaliser(self) -> Normaliser:
+        """Value/attribute canonicaliser — needed to ask "do these two agree?"."""
+        return self._normaliser
+
+    @property
+    def scorer(self) -> CategoryScorer:
+        """The project's scorer, so derived views score the same way reports do."""
+        return self._scorer
 
     # -- internals ---------------------------------------------------------- #
 
@@ -267,7 +282,8 @@ class ContinuityEngine:
         stable (entity, attribute, rule, scene) signature instead.
         """
         previous = {
-            (i.entity.key, i.attribute, i.type, i.scene_id): i for i in self._issues.values()
+            (i.entity.key, i.attribute, i.type, i.scene_id): i
+            for i in self._issues.values()
         }
         for issue in issues:
             match = previous.get((issue.entity.key, issue.attribute, issue.type, issue.scene_id))

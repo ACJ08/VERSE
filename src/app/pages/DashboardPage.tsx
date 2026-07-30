@@ -10,6 +10,15 @@
 //   - Added "Development" status colour entries to both ProducerOverview and
 //     ProducerProductions status maps — previously unhandled, now rendered in purple.
 //   - Added "Development" filter button to ProducerProductions filter bar.
+//   - Wired the script + footage ingestion pipeline through to the pages that
+//     read its output: Scene Tracking, Scene Timeline, Timeline Tracking,
+//     Costume/Prop Tracking, Continuity Verification, Continuity Tracking and
+//     Production Memory now render live engine data (GET /continuity/scenes and
+//     /continuity/entities) and fall back to the design-time mock content when
+//     the backend is offline or the project has no data yet.
+//   - Added FootageUploadPanel: uploads the vision pipeline's scene JSON (or a
+//     clip, when the backend has a vision service) and maps anonymous track ids
+//     to script character names, which is what makes footage comparable.
 
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -33,8 +42,14 @@ import {
   aiRecommendations, teamMembers, characters,
   userRoles, type UserRole,
 } from "@/app/data/mockData";
-import { projects as apiProjects } from "@/app/lib/api";
-import { useBackendHealth } from "@/app/lib/hooks";
+import {
+  projects as apiProjects, continuity as apiContinuity, upload as apiUpload,
+  sceneStatus, slotStateLabel, slotValue, pct, toDisplaySeverity,
+  type SceneView, type EntityView, type SlotView, type FootageUploadResult,
+} from "@/app/lib/api";
+import {
+  useBackendHealth, useSceneViews, useEntityViews, useFootageUpload,
+} from "@/app/lib/hooks";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -269,6 +284,139 @@ function BackendStatusBadge() {
 
 // ─── AI Analysis Modal ─────────────────────────────────────────────────────────
 
+// ─── Live pipeline data ────────────────────────────────────────────────────────
+
+/** Banner listing warnings the ingestion pipeline reported (missing aliases, offline services). */
+function PipelineWarnings({ warnings }: { warnings?: string[] }) {
+  if (!warnings || warnings.length === 0) return null;
+  return (
+    <div className="rounded-2xl border p-4 flex flex-col gap-1" style={{ borderColor: "rgba(196,149,18,0.3)", background: "var(--verse-gold-light)" }}>
+      {warnings.map((w, i) => (
+        <p key={i} className="text-xs" style={{ color: "#7C5E0B" }}>{w}</p>
+      ))}
+    </div>
+  );
+}
+
+/** Small "live data" / "demo data" marker so evaluators know which they're seeing. */
+function DataSourceBadge({ live, label = "engine" }: { live: boolean; label?: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 h-5 px-2 rounded-md text-[10px] font-bold uppercase tracking-wide"
+      style={{
+        color: live ? "var(--verse-emerald)" : "#64748B",
+        background: live ? "#ECFDF5" : "#F1F3F7",
+      }}
+    >
+      {live ? `Live · ${label}` : "Demo data"}
+    </span>
+  );
+}
+
+/**
+ * Footage ingestion panel.
+ *
+ * Accepts the `scene_<id>.json` the vision pipeline writes, or a video clip when
+ * the backend has VISION_SERVICE_URL configured. The alias field is the part that
+ * makes the footage useful: the vision tracker emits PERSON_1/PERSON_2, and
+ * without a mapping to script character names nothing can be compared.
+ */
+function FootageUploadPanel({
+  projectId, onIngested,
+}: { projectId?: string; onIngested?: (result: FootageUploadResult) => void }) {
+  const { uploadFootage, loading, result, error } = useFootageUpload(projectId ?? "VERSE_DEMO");
+  const [sceneId, setSceneId] = useState("");
+  const [aliasText, setAliasText] = useState("");
+
+  // "PERSON_1=Sarah, PERSON_2=Marcus" → {PERSON_1: "Sarah", PERSON_2: "Marcus"}
+  const parseAliases = (): Record<string, string> => {
+    const map: Record<string, string> = {};
+    for (const pair of aliasText.split(/[,\n]/)) {
+      const [from, to] = pair.split(/[=:]/);
+      if (from?.trim() && to?.trim()) map[from.trim()] = to.trim();
+    }
+    return map;
+  };
+
+  const pickFile = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,.mp4,.mov,.mkv,.avi";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const res = await uploadFootage(file, {
+        sceneId: sceneId.trim() || undefined,
+        entityAliases: parseAliases(),
+      });
+      if (res) {
+        toast.success(
+          res.duplicate
+            ? "This footage was already ingested — skipped."
+            : `${res.frames_analysed} frames aggregated · ${res.facts_ingested} facts ingested.`,
+        );
+        onIngested?.(res);
+      } else {
+        toast.error("Footage ingestion failed.");
+      }
+    };
+    input.click();
+  };
+
+  return (
+    <Card variant="ai">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[140px]">
+          <label className="text-xs font-bold text-muted-foreground">Scene ID</label>
+          <input
+            placeholder="SCENE_001"
+            value={sceneId}
+            onChange={(e) => setSceneId(e.target.value)}
+            className="mt-1 w-full h-9 border rounded-lg px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/25"
+            style={{ borderColor: "var(--border)", background: "white" }}
+          />
+        </div>
+        <div className="flex-[2] min-w-[220px]">
+          <label className="text-xs font-bold text-muted-foreground">
+            Identity mapping <span className="font-normal">— vision track id to script name</span>
+          </label>
+          <input
+            placeholder="PERSON_1=Sarah, PERSON_2=Marcus"
+            value={aliasText}
+            onChange={(e) => setAliasText(e.target.value)}
+            className="mt-1 w-full h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25"
+            style={{ borderColor: "var(--border)", background: "white" }}
+          />
+        </div>
+        <Btn variant="primary" icon={Upload} onClick={pickFile}>
+          {loading ? "Ingesting…" : "Upload Footage"}
+        </Btn>
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">
+        Accepts the vision pipeline's <span className="font-mono">scene_&lt;id&gt;.json</span>, or a
+        video clip when a vision service is configured. Frames are aggregated to one
+        observation per attribute before comparison.
+      </p>
+
+      {error && <p className="text-xs mt-2" style={{ color: "var(--verse-red)" }}>{error}</p>}
+
+      {result && !loading && (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <StatusBadge label={`${result.frames_analysed} frames`} color="var(--verse-violet)" bg="var(--verse-violet-light)" />
+            <StatusBadge label={`${result.facts_ingested} facts`} color="var(--verse-midnight)" bg="var(--verse-midnight-light)" />
+            {result.report && <ScorePill value={Math.round(result.report.overall_score)} />}
+            {result.entities && result.entities.length > 0 && (
+              <span className="text-muted-foreground">Detected: {result.entities.join(", ")}</span>
+            )}
+          </div>
+          <PipelineWarnings warnings={result.warnings} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onClose: () => void; projectId?: string }) {
   const [phase, setPhase] = useState<"loading" | "done">("loading");
   const [stepIndex, setStepIndex] = useState(0);
@@ -309,8 +457,7 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
     // Real API call — falls back to demo data if backend is offline
     try {
       const pid = projectId ?? "VERSE_DEMO";
-      const { continuity } = await import("@/app/lib/api");
-      const report = await continuity.analyse(pid);
+      const report = await apiContinuity.analyse(pid);
       const sev = (s: string): "critical"|"warning"|"info" =>
         s === "critical" ? "critical" : s === "high" || s === "medium" ? "warning" : "info";
       setLiveIssues(
@@ -669,8 +816,8 @@ function ProducerOverview({ productionName, onAIAction, projectId }: { productio
   const [liveRecs, setLiveRecs] = React.useState<typeof aiRecommendations | null>(null);
   React.useEffect(() => {
     if (!projectId) return;
-    import("@/app/lib/api").then(({ continuity, toDisplaySeverity }) => {
-      continuity.issues(projectId)
+    {
+      apiContinuity.issues(projectId)
         .then((issues) => {
           if (!issues.length) return; // no data yet — keep mock
           setLiveRecs(
@@ -686,7 +833,7 @@ function ProducerOverview({ productionName, onAIAction, projectId }: { productio
           );
         })
         .catch(() => {}); // backend offline — keep mock
-    });
+    }
   }, [projectId]);
 
   // Use live data when available; fall back to design-time mock array
@@ -1037,25 +1184,7 @@ function ProducerContinuityReports({ projectId }: { projectId?: string }) {
   const handleRunAnalysis = async () => {
     if (isRunning) return;
     setIsRunning(true);
-    try {
-      const { continuity, toDisplaySeverity } = await import("@/app/lib/api");
-      const report = await continuity.analyse(projectId ?? "VERSE_DEMO");
-      setLiveReport({ score: Math.round(report.overall_score), issueCount: report.issues.length });
-      // Update report rows with fresh analysis results
-      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-      if (report.issues.length) {
         setLiveReportRows(
-          report.issues.slice(0, 10).map((issue, i) => ({
-            id: issue.issue_id,
-            title: issue.explanation || issue.attribute || `Issue #${i + 1}`,
-            date: now,
-            severity: toDisplaySeverity(issue.severity),
-            scenes: issue.related_scene_ids?.length ?? 1,
-            issues: 1,
-            score: Math.round(100 - (issue.score_impact ?? 0) * 100),
-          }))
-        );
-      }
       toast.success(`Analysis complete — score ${Math.round(report.overall_score)}%, ${report.issues.length} issue(s) found.`);
     } catch {
       toast.promise(new Promise<void>((resolve) => setTimeout(resolve, 1200)), { loading: "Running AI analysis…", success: "Analysis complete. Report generated.", error: "Analysis failed." });
@@ -1368,23 +1497,55 @@ const sceneList = [
   { id: "s7", scene: "Scene 31", location: "EXT. ROOFTOP — NIGHT", chars: "Elena, Marcus", status: "Review", shots: 7, duration: "3:55", score: 88 },
 ];
 
-function DirectorSceneTracking() {
+/**
+ * Turn the engine's per-scene rollup into the rows this table already renders.
+ * `shots` is the number of facts recorded for the scene — the closest live
+ * equivalent to "how much do we know about this scene".
+ */
+function sceneViewsToRows(scenes: SceneView[]) {
+  return scenes.map((s) => ({
+    id: s.scene_id,
+    scene: s.scene_id.replace(/_/g, " "),
+    location: s.slugline ?? s.location ?? "—",
+    chars: s.entities.filter((e) => e.type === "character").map((e) => e.name).join(", ") || "—",
+    status: sceneStatus(s),
+    shots: s.fact_count,
+    duration: s.time_of_day ?? "—",
+    score: s.has_footage ? Math.round(s.score) : 0,
+  }));
+}
+
+function DirectorSceneTracking({ projectId }: { projectId?: string }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
-  const [scenes, setScenes] = useState(sceneList);
   const [showAddScene, setShowAddScene] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
+  const [added, setAdded] = useState<ReturnType<typeof sceneViewsToRows>>([]);
+
+  // Live scenes from the ingestion pipeline; the mock list stands in until a
+  // screenplay has been ingested (or when the backend is offline).
+  const { scenes: liveScenes, overview, loading } = useSceneViews(projectId ?? null);
+  const isLive = liveScenes.length > 0;
+  const scenes = [...(isLive ? sceneViewsToRows(liveScenes) : sceneList), ...added];
+
   const sev = { Logged: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Flagged: { c: "var(--verse-red)", bg: "#FEF2F2" }, "In Progress": { c: "var(--verse-violet)", bg: "var(--verse-violet-light)" }, Scheduled: { c: "#64748B", bg: "#F1F3F7" }, Review: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" } };
   const filtered = scenes.filter((s) => (filter === "All" || s.status === filter) && (s.scene + s.location + s.chars).toLowerCase().includes(search.toLowerCase()));
   const addScene = () => {
     if (!newSceneName.trim()) { toast.error("Enter a scene name."); return; }
-    setScenes((prev) => [...prev, { id: `s${prev.length + 1}`, scene: newSceneName, location: "TBD", chars: "—", status: "Scheduled", shots: 0, duration: "—", score: 0 }]);
+    setAdded((prev) => [...prev, { id: `s${prev.length + 1}`, scene: newSceneName, location: "TBD", chars: "—", status: "Scheduled", shots: 0, duration: "—", score: 0 }]);
     toast.success(`${newSceneName} added.`);
     setNewSceneName(""); setShowAddScene(false);
   };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Scene Tracking" subtitle="Monitor all scenes across the production." actions={<>
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Scene Tracking <DataSourceBadge live={isLive} /></span>}
+        subtitle={
+          overview
+            ? `${overview.scenes_shot}/${overview.scenes_total} scenes shot · ${overview.scenes_clean} clean · ${overview.issues_total} open issue(s) · avg score ${overview.average_scene_score}%`
+            : loading ? "Loading scenes from the continuity engine…" : "Monitor all scenes across the production."
+        }
+        actions={<>
         <Btn variant="secondary" icon={Download} onClick={() => toast.promise(new Promise((r) => setTimeout(r, 800)), { loading: "Exporting…", success: "Scene log exported.", error: "Failed." })}>Export</Btn>
         <Btn variant="primary" icon={Plus} onClick={() => setShowAddScene(true)}>Add Scene</Btn>
       </>} />
@@ -1654,29 +1815,67 @@ function ScriptSupervisorOverview({ productionName, onAIAction }: { productionNa
   );
 }
 
-function ContinuityTracking() {
+function ContinuityTracking({ projectId }: { projectId?: string }) {
   const [showLog, setShowLog] = useState(false);
   const [newIssueDesc, setNewIssueDesc] = useState("");
   const [issues, setIssues] = useState([
-    { id: "ci1", scene: "Scene 18", type: "Timeline", desc: "References 'Tuesday morning' but Scene 17 established 'Monday evening'.", severity: "critical", resolved: false },
-    { id: "ci2", scene: "Scene 23", type: "Costume", desc: "Elena's jacket changes from navy to black between shots 23A and 23C.", severity: "warning", resolved: false },
-    { id: "ci3", scene: "Scene 31", type: "Prop", desc: "Marcus's watch absent in shots 31B–31D.", severity: "warning", resolved: false },
-    { id: "ci4", scene: "Scene 17", type: "Dialogue", desc: "Minor inconsistency in coffee cup position during dialogue exchange.", severity: "info", resolved: true },
+    { id: "ci1", scene: "Scene 18", type: "Timeline", desc: "References 'Tuesday morning' but Scene 17 established 'Monday evening'.", severity: "critical", resolved: false, live: false },
+    { id: "ci2", scene: "Scene 23", type: "Costume", desc: "Elena's jacket changes from navy to black between shots 23A and 23C.", severity: "warning", resolved: false, live: false },
+    { id: "ci3", scene: "Scene 31", type: "Prop", desc: "Marcus's watch absent in shots 31B–31D.", severity: "warning", resolved: false, live: false },
+    { id: "ci4", scene: "Scene 17", type: "Dialogue", desc: "Minor inconsistency in coffee cup position during dialogue exchange.", severity: "info", resolved: true, live: false },
   ]);
-  const toggleResolved = (id: string) => {
+  const [isLive, setIsLive] = useState(false);
+
+  // Real issues from the engine, produced by comparing the ingested script
+  // against the ingested footage. Mock issues stay put when there are none.
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiContinuity.issues(projectId)
+      .then((live) => {
+        if (!live.length) return;
+        setIsLive(true);
+        setIssues(live.map((i) => ({
+          id: i.issue_id,
+          scene: i.scene_id ?? "—",
+          type: i.category,
+          desc: i.explanation || `${i.attribute}: expected ${String(i.expected.value)}, observed ${String(i.observed.value)}`,
+          severity: i.severity === "critical" ? "critical" : i.severity === "low" ? "info" : "warning",
+          resolved: i.status === "resolved" || i.status === "dismissed",
+          live: true,
+        })));
+      })
+      .catch(() => { /* backend offline — keep the mock issues */ });
+  }, [projectId]);
+
+  const toggleResolved = async (id: string) => {
+    const issue = issues.find((i) => i.id === id);
     setIssues((prev) => prev.map((i) => i.id === id ? { ...i, resolved: !i.resolved } : i));
+    if (issue?.live && projectId) {
+      try {
+        await apiContinuity.feedback(projectId, id, issue.resolved ? "reopen" : "resolve");
+        toast.success(issue.resolved ? "Issue reopened." : "Issue resolved — the score updates on the next analysis.");
+        return;
+      } catch {
+        toast.error("Could not record the decision with the engine.");
+        return;
+      }
+    }
     toast.success("Continuity issue status updated.");
   };
   const sev = { critical: { c: "var(--verse-red)", bg: "#FEF2F2", l: "Critical" }, warning: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)", l: "Warning" }, info: { c: "#0F62FE", bg: "#EFF6FF", l: "Info" } };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Continuity Tracking" subtitle="Monitor, flag, and resolve continuity issues." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Issue</Btn>} />
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Continuity Tracking <DataSourceBadge live={isLive} /></span>}
+        subtitle="Monitor, flag, and resolve continuity issues. Resolving a detected issue is recorded with the engine and re-scores the production."
+        actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Issue</Btn>}
+      />
       {showLog && (
         <div className="rounded-2xl border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
           <p className="text-sm font-bold text-foreground">Log New Issue</p>
           <textarea autoFocus placeholder="Describe the continuity issue…" value={newIssueDesc} onChange={(e) => setNewIssueDesc(e.target.value)} rows={2} className="border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
           <div className="flex gap-2">
-            <Btn variant="primary" onClick={() => { if (!newIssueDesc.trim()) { toast.error("Enter a description."); return; } setIssues((prev) => [{ id: `ci${prev.length + 1}`, scene: "New Scene", type: "General", desc: newIssueDesc, severity: "info", resolved: false }, ...prev]); setNewIssueDesc(""); setShowLog(false); toast.success("Issue logged."); }}>Log Issue</Btn>
+            <Btn variant="primary" onClick={() => { if (!newIssueDesc.trim()) { toast.error("Enter a description."); return; } setIssues((prev) => [{ id: `ci${prev.length + 1}`, scene: "New Scene", type: "General", desc: newIssueDesc, severity: "info", resolved: false, live: false }, ...prev]); setNewIssueDesc(""); setShowLog(false); toast.success("Issue logged."); }}>Log Issue</Btn>
             <Btn variant="secondary" onClick={() => { setShowLog(false); setNewIssueDesc(""); }}>Cancel</Btn>
           </div>
         </div>
@@ -1736,15 +1935,14 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
     const pid = projectId ?? "VERSE_DEMO";
     setUploading(true);
     try {
-      const { upload, continuity } = await import("@/app/lib/api");
-      const result = await upload.screenplay(pid, file);
+      const result = await apiUpload.screenplay(pid, file);
       setUploadResult(result);
       toast.success(`"${result.filename}" ingested — ${result.scenes_detected} scenes, ${result.facts_ingested} facts extracted.`);
 
       // Step 2 — automatically run analysis after upload
       setAnalysing(true);
       try {
-        const report = await continuity.analyse(pid);
+        const report = await apiContinuity.analyse(pid);
         const sev = (s: string) => s === "critical" ? 40 : s === "high" ? 65 : s === "medium" ? 80 : 95;
         const grouped: Record<string, string[]> = {};
         for (const issue of report.issues) {
@@ -1859,27 +2057,44 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
   );
 }
 
-function SceneTimeline() {
+function SceneTimeline({ projectId }: { projectId?: string }) {
+  // Screenplay order comes from the engine's timeline, which is built from the
+  // `sequence` each scene was ingested with — not from shooting order.
+  const { scenes: liveScenes, overview, loading } = useSceneViews(projectId ?? null);
+  const isLive = liveScenes.length > 0;
+  const rows = isLive
+    ? sceneViewsToRows(liveScenes).map((r, i) => ({ ...r, headline: liveScenes[i].headline }))
+    : sceneList.map((s) => ({ ...s, headline: "" }));
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Scene Timeline" subtitle="Chronological scene order with continuity status." actions={<Btn variant="secondary" icon={Filter} onClick={() => toast.info("Opening filter options…")}>Filter</Btn>} />
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Scene Timeline <DataSourceBadge live={isLive} /></span>}
+        subtitle={
+          overview
+            ? `Screenplay order · ${overview.scenes_shot}/${overview.scenes_total} shot · avg score ${overview.average_scene_score}%`
+            : loading ? "Loading the screenplay timeline…" : "Chronological scene order with continuity status."
+        }
+        actions={<Btn variant="secondary" icon={Filter} onClick={() => toast.info("Opening filter options…")}>Filter</Btn>}
+      />
       <Card>
         <div className="flex flex-col gap-0">
-          {sceneList.map((s, i) => {
+          {rows.map((s, i) => {
             const sc = { Flagged: "var(--verse-red)", Logged: "var(--verse-emerald)", "In Progress": "var(--verse-violet)", Review: "var(--verse-gold)", Scheduled: "#CBD5E1" }[s.status] || "#CBD5E1";
             return (
               <div key={s.id} className="relative flex gap-4 group cursor-pointer" onClick={() => toast.info(`Opening ${s.scene}…`)}>
                 <div className="flex flex-col items-center">
                   <div className="w-3 h-3 rounded-full border-2 border-white mt-4 z-10" style={{ backgroundColor: sc }} />
-                  {i < sceneList.length - 1 && <div className="w-px flex-1 mt-1" style={{ backgroundColor: "var(--border)" }} />}
+                  {i < rows.length - 1 && <div className="w-px flex-1 mt-1" style={{ backgroundColor: "var(--border)" }} />}
                 </div>
                 <div className={`flex-1 p-3 rounded-xl mb-2 border transition-all group-hover:shadow-sm`} style={{ borderColor: "var(--border)" }}>
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-xs font-mono font-bold text-foreground">{s.scene}</span>
                       <span className="text-xs text-muted-foreground ml-2">{s.location}</span>
+                      {s.headline && <p className="text-xs text-muted-foreground truncate">{s.headline}</p>}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-xs text-muted-foreground">{s.chars}</span>
                       {s.score > 0 && <ScorePill value={s.score} />}
                     </div>
@@ -2002,19 +2217,68 @@ function ContinuitySupervisorOverview({ productionName }: { productionName: stri
   );
 }
 
-function CostumeTracking() {
-  const costumes = [
-    { id: "c1", name: "Navy Blazer", character: "Elena Chen", scenes: "17, 18, 23, 24", status: "Verified", continuity: 97 },
-    { id: "c2", name: "Charcoal Suit", character: "Marcus Reyes", scenes: "17, 24, 31", status: "Issue", continuity: 89 },
-    { id: "c3", name: "White Lab Coat", character: "Dr. Helena Park", scenes: "18, 19", status: "Verified", continuity: 100 },
-    { id: "c4", name: "Casual — Blue Jeans", character: "Elena Chen", scenes: "20, 21", status: "Pending", continuity: 0 },
+/**
+ * Collapse an entity's per-scene slots into the card summary these pages show.
+ * Continuity score is the share of comparable slots that agreed — the honest
+ * per-entity equivalent of the project score, and 0 when nothing has been shot.
+ */
+function summariseEntity(view: EntityView, attribute?: string) {
+  const slots = attribute ? view.slots.filter((s) => s.attribute === attribute) : view.slots;
+  const compared = slots.filter((s) => s.state === "match" || s.state === "conflict");
+  const matched = slots.filter((s) => s.state === "match").length;
+  const flagged = slots.filter((s) => s.flagged).length;
+  const status = flagged > 0
+    ? "Issue"
+    : compared.length === 0 ? "Pending" : "Verified";
+  return {
+    slots,
+    status,
+    continuity: compared.length === 0 ? 0 : Math.round((matched / compared.length) * 100),
+    scenes: [...new Set(slots.map((s) => s.scene_id).filter(Boolean))].join(", "),
+    /** Most recent expected value — what the production currently believes. */
+    current: attribute ? String(view.latest[attribute] ?? "—") : "—",
+  };
+}
+
+function CostumeTracking({ projectId }: { projectId?: string }) {
+  const mockCostumes = [
+    { id: "c1", name: "Navy Blazer", character: "Elena Chen", scenes: "17, 18, 23, 24", status: "Verified", continuity: 97, slots: [] as SlotView[] },
+    { id: "c2", name: "Charcoal Suit", character: "Marcus Reyes", scenes: "17, 24, 31", status: "Issue", continuity: 89, slots: [] as SlotView[] },
+    { id: "c3", name: "White Lab Coat", character: "Dr. Helena Park", scenes: "18, 19", status: "Verified", continuity: 100, slots: [] as SlotView[] },
+    { id: "c4", name: "Casual — Blue Jeans", character: "Elena Chen", scenes: "20, 21", status: "Pending", continuity: 0, slots: [] as SlotView[] },
   ];
+
+  // Wardrobe state per character, straight from the engine's production memory.
+  const { entities, loading } = useEntityViews(projectId ?? null, {
+    entityType: "character",
+    attribute: "wears",
+  });
+  const isLive = !!entities && entities.length > 0;
+  const costumes = isLive
+    ? entities.map((view) => {
+        const summary = summariseEntity(view, "wears");
+        return {
+          id: view.entity.key,
+          name: summary.current,
+          character: view.entity.name,
+          scenes: summary.scenes || "—",
+          status: summary.status,
+          continuity: summary.continuity,
+          slots: summary.slots,
+        };
+      })
+    : mockCostumes;
+
   const [showLog, setShowLog] = useState(false);
   const [newCostumeName, setNewCostumeName] = useState("");
   const sc = { Verified: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Issue: { c: "var(--verse-red)", bg: "#FEF2F2" }, Pending: { c: "#64748B", bg: "#F1F3F7" } };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Costume Tracking" subtitle="Character costume continuity across all scenes." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Costume</Btn>} />
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Costume Tracking <DataSourceBadge live={isLive} /></span>}
+        subtitle={loading ? "Loading wardrobe state from production memory…" : "Character costume continuity across all scenes — script expectation vs. what the footage shows."}
+        actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Costume</Btn>}
+      />
       {showLog && (
         <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
           <input autoFocus placeholder="Costume name (e.g. Red Evening Dress)…" value={newCostumeName} onChange={(e) => setNewCostumeName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newCostumeName.trim() && (toast.success(`"${newCostumeName}" logged.`), setNewCostumeName(""), setShowLog(false))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
@@ -2039,6 +2303,26 @@ function CostumeTracking() {
                 <div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Continuity score</span><ScorePill value={c.continuity} /></div>
                 <ProgressBar value={c.continuity} color={s.c} />
               </>}
+              {/* Per-scene expected vs observed, with the source of each half. */}
+              {c.slots.length > 0 && (
+                <div className="mt-3 flex flex-col gap-1">
+                  {c.slots.map((slot, i) => {
+                    const state = slotStateLabel(slot);
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="font-mono text-muted-foreground w-24 flex-shrink-0 truncate">{slot.scene_id}</span>
+                        <span className="text-foreground truncate">{slotValue(slot.expected)}</span>
+                        <ArrowRight size={11} className="text-muted-foreground flex-shrink-0" />
+                        <span className="text-foreground truncate">{slotValue(slot.observed)}</span>
+                        <span className="ml-auto font-semibold flex-shrink-0" style={{ color: state.color }}>{state.label}</span>
+                        {slot.observed && (
+                          <span className="text-muted-foreground font-mono flex-shrink-0">{pct(slot.observed.confidence)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className="flex gap-2 mt-3">
                 <button className="flex-1 h-7 text-xs rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.info("Opening costume detail…")}>View Detail</button>
                 <button className="h-7 px-3 text-xs border rounded-lg hover:bg-muted text-muted-foreground" style={{ borderColor: "var(--border)" }} onClick={() => toast.info("Editing costume log…")}><Edit3 size={12} /></button>
@@ -2051,20 +2335,50 @@ function CostumeTracking() {
   );
 }
 
-function PropTracking() {
-  const props = [
+function PropTracking({ projectId }: { projectId?: string }) {
+  const mockProps = [
     { id: "p1", name: "Vintage Rolex Watch", category: "Jewelry", character: "Marcus Reyes", scenes: "31A, 31E", status: "Issue", note: "Absent in shots 31B–31D" },
     { id: "p2", name: "Hero Coffee Mug", category: "Prop", character: "Elena Chen", scenes: "17, 18", status: "Verified", note: "Consistent across all shots" },
     { id: "p3", name: "Police Badge #4821", category: "ID / Badge", character: "Elena Chen", scenes: "17–25", status: "Verified", note: "Visible in all applicable scenes" },
     { id: "p4", name: "Leather Briefcase", category: "Prop", character: "Marcus Reyes", scenes: "17, 24", status: "Pending", note: "Not yet logged for Scene 31" },
     { id: "p5", name: "Crime Board Photos", category: "Set Dressing", character: "—", scenes: "17, 18", status: "Verified", note: "Photo order confirmed consistent" },
   ];
+
+  // Prop state per scene from the engine: hand, condition, owner, and whether
+  // the footage confirmed the script.
+  const { entities, loading } = useEntityViews(projectId ?? null, { entityType: "prop" });
+  const isLive = !!entities && entities.length > 0;
+  const props = isLive
+    ? entities.map((view) => {
+        const summary = summariseEntity(view);
+        const worst = summary.slots.find((s) => s.flagged) ?? summary.slots.find((s) => s.state === "conflict");
+        const owner = view.latest.owner;
+        return {
+          id: view.entity.key,
+          name: view.entity.name,
+          category: view.attributes.join(" · ") || "Prop",
+          character: owner ? String(owner) : "—",
+          scenes: summary.scenes || "—",
+          status: summary.status,
+          note: worst
+            ? `${worst.attribute}: script says ${slotValue(worst.expected)}, footage shows ${slotValue(worst.observed)}${worst.flagged ? "" : " (below the flagging threshold)"}`
+            : summary.status === "Pending"
+              ? "Awaiting footage for the scenes this prop appears in."
+              : `${summary.slots.length} attribute(s) verified against footage.`,
+        };
+      })
+    : mockProps;
+
   const [showLog, setShowLog] = useState(false);
   const [newPropName, setNewPropName] = useState("");
   const sc = { Verified: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Issue: { c: "var(--verse-red)", bg: "#FEF2F2" }, Pending: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" } };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Prop Tracking" subtitle="Prop inventory and scene continuity verification." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Prop</Btn>} />
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Prop Tracking <DataSourceBadge live={isLive} /></span>}
+        subtitle={loading ? "Loading prop state from production memory…" : "Prop inventory and scene continuity verification."}
+        actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Prop</Btn>}
+      />
       {showLog && (
         <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
           <input autoFocus placeholder="Prop name (e.g. Antique Clock)…" value={newPropName} onChange={(e) => setNewPropName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newPropName.trim() && (toast.success(`"${newPropName}" logged.`), setNewPropName(""), setShowLog(false))} className="flex-1 h-9 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} />
@@ -2100,20 +2414,84 @@ function PropTracking() {
   );
 }
 
-function ContinuityVerification() {
-  const [items, setItems] = useState([
-    { id: "v1", scene: "Scene 17", check: "Costume verified against Scene 16 reference", done: true },
-    { id: "v2", scene: "Scene 18", check: "Timeline logic reviewed and flagged", done: true },
-    { id: "v3", scene: "Scene 23", check: "Costume colour inconsistency resolved", done: false },
-    { id: "v4", scene: "Scene 24", check: "Prop inventory confirmed for exterior shoot", done: true },
-    { id: "v5", scene: "Scene 31", check: "Marcus watch continuity resolved", done: false },
-    { id: "v6", scene: "Scene 31", check: "Rooftop lighting continuity verified", done: false },
-  ]);
-  const toggle = (id: string) => { setItems((prev) => prev.map((i) => i.id === id ? { ...i, done: !i.done } : i)); toast.success("Verification updated."); };
+function ContinuityVerification({ projectId }: { projectId?: string }) {
+  const mockItems = [
+    { id: "v1", scene: "Scene 17", check: "Costume verified against Scene 16 reference", done: true, issueId: null as string | null },
+    { id: "v2", scene: "Scene 18", check: "Timeline logic reviewed and flagged", done: true, issueId: null },
+    { id: "v3", scene: "Scene 23", check: "Costume colour inconsistency resolved", done: false, issueId: null },
+    { id: "v4", scene: "Scene 24", check: "Prop inventory confirmed for exterior shoot", done: true, issueId: null },
+    { id: "v5", scene: "Scene 31", check: "Marcus watch continuity resolved", done: false, issueId: null },
+    { id: "v6", scene: "Scene 31", check: "Rooftop lighting continuity verified", done: false, issueId: null },
+  ];
+
+  // The checklist is generated from what the engine actually compared: every
+  // slot where script and footage disagree, plus the ones still awaiting footage.
+  const { entities, loading, refetch } = useEntityViews(projectId ?? null);
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+
+  const liveItems = React.useMemo(() => {
+    if (!entities) return [];
+    const rows: Array<{ id: string; scene: string; check: string; done: boolean; issueId: string | null }> = [];
+    for (const view of entities) {
+      for (const slot of view.slots) {
+        if (slot.state === "match" || slot.state === "observed_only") continue;
+        const id = `${view.entity.key}:${slot.attribute}:${slot.scene_id}`;
+        const check = slot.state === "conflict"
+          ? `${view.entity.name} — ${slot.attribute.replace(/_/g, " ")}: script says "${slotValue(slot.expected)}", footage shows "${slotValue(slot.observed)}"${slot.flagged ? "" : " (low confidence)"}`
+          : `${view.entity.name} — ${slot.attribute.replace(/_/g, " ")}: "${slotValue(slot.expected)}" not yet confirmed by footage`;
+        rows.push({
+          id,
+          scene: slot.scene_id ?? "—",
+          check,
+          done: overrides[id] ?? slot.human_confirmed,
+          issueId: slot.issue_id,
+        });
+      }
+    }
+    return rows;
+  }, [entities, overrides]);
+
+  const isLive = liveItems.length > 0;
+  const [mockState, setMockState] = useState(mockItems);
+  const items = isLive ? liveItems : mockState;
+
+  /**
+   * Ticking a generated check records the human decision on the engine's issue
+   * (`resolve`) so the score is recalculated on the next analysis run. Checks
+   * with no issue behind them are local-only.
+   */
+  const toggle = async (id: string) => {
+    if (!isLive) {
+      setMockState((prev) => prev.map((i) => i.id === id ? { ...i, done: !i.done } : i));
+      toast.success("Verification updated.");
+      return;
+    }
+    const item = liveItems.find((i) => i.id === id);
+    const next = !(item?.done ?? false);
+    setOverrides((prev) => ({ ...prev, [id]: next }));
+    if (item?.issueId && projectId) {
+      try {
+        await apiContinuity.feedback(projectId, item.issueId, next ? "resolve" : "reopen");
+        toast.success(next ? "Marked resolved — score will update on the next analysis." : "Reopened.");
+        void refetch();
+        return;
+      } catch {
+        toast.error("Could not record the decision with the engine.");
+        return;
+      }
+    }
+    toast.success("Verification updated.");
+  };
+
   const done = items.filter((i) => i.done).length;
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Continuity Verification" subtitle="Scene-by-scene verification checklist." actions={<Btn variant="primary" icon={Download} onClick={() => toast.info("Exporting verification report…")}>Export Report</Btn>} />
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Continuity Verification <DataSourceBadge live={isLive} /></span>}
+        subtitle={loading ? "Loading comparisons from the continuity engine…" : "Upload footage for a scene, then verify what the engine compared against the script."}
+        actions={<Btn variant="primary" icon={Download} onClick={() => toast.info("Exporting verification report…")}>Export Report</Btn>}
+      />
+      <FootageUploadPanel projectId={projectId} onIngested={() => refetch()} />
       <Card>
         <div className="flex items-center gap-4 mb-4">
           <div>
@@ -2145,8 +2523,8 @@ function ContinuityVerification() {
 // Tracks scene shooting order vs. narrative order so the continuity supervisor
 // can spot gaps, overlaps, and out-of-sequence anomalies at a glance.
 // Previously listed as a role feature in mockData but had no nav entry or page.
-function TimelineTracking() {
-  const scenes = [
+function TimelineTracking({ projectId }: { projectId?: string }) {
+  const mockScenes = [
     { id: "s1", scene: "Scene 17", shootDay: "Day 1", narrative: "Monday Morning", location: "INT. Office", status: "Verified", continuity: 100 },
     { id: "s2", scene: "Scene 18", shootDay: "Day 1", narrative: "Monday Morning", location: "INT. Office", status: "Flagged", continuity: 72 },
     { id: "s3", scene: "Scene 23", shootDay: "Day 3", narrative: "Tuesday Afternoon", location: "INT. Diner", status: "Flagged", continuity: 81 },
@@ -2154,6 +2532,26 @@ function TimelineTracking() {
     { id: "s5", scene: "Scene 31", shootDay: "Day 6", narrative: "Wednesday Night", location: "EXT. Rooftop", status: "Pending", continuity: 0 },
     { id: "s6", scene: "Scene 34", shootDay: "Day 8", narrative: "Thursday Morning", location: "INT. Precinct", status: "Verified", continuity: 99 },
   ];
+
+  // Screenplay sequence and per-scene score come from the engine. "Verified"
+  // means shot and clean; "Pending" means no footage has been ingested yet.
+  const { scenes: liveScenes } = useSceneViews(projectId ?? null);
+  const isLive = liveScenes.length > 0;
+  const scenes = isLive
+    ? liveScenes.map((s) => {
+        const status = sceneStatus(s);
+        return {
+          id: s.scene_id,
+          scene: s.scene_id.replace(/_/g, " "),
+          shootDay: `Seq ${s.sequence}`,
+          narrative: s.time_of_day ?? "—",
+          location: s.location ?? "—",
+          status: status === "Logged" ? "Verified" : status === "Scheduled" ? "Pending" : "Flagged",
+          continuity: s.has_footage ? Math.round(s.score) : 0,
+        };
+      })
+    : mockScenes;
+
   const statusStyle = {
     Verified: { c: "var(--verse-emerald)", bg: "#ECFDF5" },
     Flagged:  { c: "var(--verse-red)",     bg: "#FEF2F2" },
@@ -2162,8 +2560,8 @@ function TimelineTracking() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Timeline Tracking"
-        subtitle="Shoot-day vs. narrative order — spot continuity gaps across the schedule."
+        title={<span className="inline-flex items-center gap-2">Timeline Tracking <DataSourceBadge live={isLive} /></span>}
+        subtitle="Screenplay order vs. continuity state — spot gaps across the schedule."
         actions={<Btn variant="secondary" icon={Download} onClick={() => toast.promise(new Promise((r) => setTimeout(r, 800)), { loading: "Exporting timeline…", success: "Timeline exported.", error: "Failed." })}>Export</Btn>}
       />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2197,29 +2595,76 @@ function TimelineTracking() {
 
 
 
-function ProductionMemory() {
-  const events = [
-    { time: "Dec 12, 10:45", event: "AI detected timeline inconsistency in Scene 18", type: "ai", color: "var(--verse-violet)" },
-    { time: "Dec 12, 09:30", event: "Scene 17 fully verified and logged to production memory", type: "log", color: "var(--verse-emerald)" },
-    { time: "Dec 11, 16:20", event: "Elena's costume reference photos uploaded — Scenes 23–25", type: "upload", color: "var(--verse-midnight)" },
-    { time: "Dec 11, 14:05", event: "Marcus watch issue flagged by script supervisor", type: "flag", color: "var(--verse-red)" },
-    { time: "Dec 10, 11:30", event: "Scene 24 logged with full prop manifest", type: "log", color: "var(--verse-emerald)" },
-    { time: "Dec 9, 09:00", event: "Production memory snapshot created — Week 3", type: "snapshot", color: "var(--verse-gold)" },
+function ProductionMemory({ projectId }: { projectId?: string }) {
+  const mockEvents = [
+    { time: "Dec 12, 10:45", event: "AI detected timeline inconsistency in Scene 18", color: "var(--verse-violet)" },
+    { time: "Dec 12, 09:30", event: "Scene 17 fully verified and logged to production memory", color: "var(--verse-emerald)" },
+    { time: "Dec 11, 16:20", event: "Elena's costume reference photos uploaded — Scenes 23–25", color: "var(--verse-midnight)" },
+    { time: "Dec 11, 14:05", event: "Marcus watch issue flagged by script supervisor", color: "var(--verse-red)" },
+    { time: "Dec 10, 11:30", event: "Scene 24 logged with full prop manifest", color: "var(--verse-emerald)" },
+    { time: "Dec 9, 09:00", event: "Production memory snapshot created — Week 3", color: "var(--verse-gold)" },
   ];
+
+  // The engine's semantic memory: what it believes about each entity, where the
+  // belief came from, and whether footage has confirmed it.
+  const { entities } = useEntityViews(projectId ?? null);
+  const { overview } = useSceneViews(projectId ?? null);
+  const isLive = !!entities && entities.length > 0;
+
+  const events = isLive
+    ? entities.flatMap((view) =>
+        view.slots.map((slot) => {
+          const state = slotStateLabel(slot);
+          const half = slot.observed ?? slot.expected;
+          return {
+            time: `${slot.scene_id ?? "—"}${half?.source ? ` · ${half.source}` : ""}${
+              half?.source_reference ? ` · ${half.source_reference}` : ""
+            }`,
+            event: `${view.entity.name} — ${slot.attribute.replace(/_/g, " ")}: ${slotValue(slot.expected)}`
+              + (slot.observed ? ` → observed ${slotValue(slot.observed)}` : "")
+              + ` (${state.label})`,
+            color: state.color,
+          };
+        }),
+      ).slice(0, 40)
+    : mockEvents;
+
+  const facts = overview?.facts ?? 284;
+  const entityCount = overview?.entities ?? 127;
+  const verified = isLive
+    ? entities.reduce((n, v) => n + v.slots.filter((s) => s.state === "match").length, 0)
+    : 42;
+  const comparable = isLive
+    ? entities.reduce((n, v) => n + v.slots.filter((s) => s.state !== "unverified").length, 0)
+    : 58;
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={<span><span style={{ color: "var(--verse-violet)" }}>Production</span> Memory</span>} subtitle="Complete history of logged continuity events." actions={<Btn variant="secondary" icon={Download} onClick={() => toast.info("Exporting memory log…")}>Export Log</Btn>} />
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2"><span><span style={{ color: "var(--verse-violet)" }}>Production</span> Memory</span> <DataSourceBadge live={isLive} /></span>}
+        subtitle="Every belief the engine holds about this production, with the source that produced it."
+        actions={<Btn variant="secondary" icon={Download} onClick={() => toast.info("Exporting memory log…")}>Export Log</Btn>}
+      />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Memory Entries" value={284} icon={Brain} color="var(--verse-violet)" />
-        <StatCard label="Entities Tracked" value={127} icon={Layers} color="var(--verse-midnight)" />
-        <StatCard label="AI Events" value={42} icon={Sparkles} color="var(--verse-gold)" />
-        <StatCard label="Memory Coverage" value="72%" icon={TrendingUp} color="var(--verse-emerald)" />
+        <StatCard label="Facts Stored" value={facts} icon={Brain} color="var(--verse-violet)" />
+        <StatCard label="Entities Tracked" value={entityCount} icon={Layers} color="var(--verse-midnight)" />
+        <StatCard label="Confirmed by Footage" value={verified} icon={Sparkles} color="var(--verse-gold)" />
+        <StatCard
+          label="Memory Coverage"
+          value={comparable > 0 ? `${Math.round((verified / comparable) * 100)}%` : "—"}
+          subtext="verified share of what footage could confirm"
+          icon={TrendingUp}
+          color="var(--verse-emerald)"
+        />
       </div>
       <Card>
-        <SectionTitle>Event Timeline</SectionTitle>
+        <SectionTitle>Semantic Memory</SectionTitle>
         <div className="flex flex-col gap-4">
           {events.map((e, i) => <ActivityItem key={i} icon={Brain} color={e.color} text={e.event} time={e.time} />)}
         </div>
+        {events.length === 0 && (
+          <EmptyState icon={Brain} title="Nothing in memory yet" description="Upload a screenplay and footage to populate production memory." />
+        )}
       </Card>
     </div>
   );
@@ -2930,7 +3375,7 @@ function DashboardContent({
 
     case "director":
       switch (activeNav) {
-        case "Scene Tracking": return <DirectorSceneTracking />;
+        case "Scene Tracking": return <DirectorSceneTracking projectId={projectId} />;
         case "Characters": return <DirectorCharacters />;
         case "Production Timeline": return <DirectorTimeline />;
         case "AI Recommendations": return <DirectorAIRecs onAIAction={onAIAction} />;
@@ -2940,9 +3385,9 @@ function DashboardContent({
 
     case "script-supervisor":
       switch (activeNav) {
-        case "Continuity Tracking": return <ContinuityTracking />;
+        case "Continuity Tracking": return <ContinuityTracking projectId={projectId} />;
         case "Screenplay Analysis": return <ScreenplayAnalysis projectId={projectId} />;
-        case "Scene Timeline": return <SceneTimeline />;
+        case "Scene Timeline": return <SceneTimeline projectId={projectId} />;
         case "AI Alerts": return <AIAlerts onAIAction={onAIAction} />;
         case "Narrative Progression": return <NarrativeProgression />;
         default: return <ScriptSupervisorOverview productionName={productionName} onAIAction={onAIAction} />;
@@ -2950,12 +3395,12 @@ function DashboardContent({
 
     case "continuity-supervisor":
       switch (activeNav) {
-        case "Costume Tracking": return <CostumeTracking />;
-        case "Prop Tracking": return <PropTracking />;
+        case "Costume Tracking": return <CostumeTracking projectId={projectId} />;
+        case "Prop Tracking": return <PropTracking projectId={projectId} />;
         // Route for the previously missing "Timeline Tracking" nav item.
-        case "Timeline Tracking": return <TimelineTracking />;
-        case "Continuity Verification": return <ContinuityVerification />;
-        case "Production Memory": return <ProductionMemory />;
+        case "Timeline Tracking": return <TimelineTracking projectId={projectId} />;
+        case "Continuity Verification": return <ContinuityVerification projectId={projectId} />;
+        case "Production Memory": return <ProductionMemory projectId={projectId} />;
         default: return <ContinuitySupervisorOverview productionName={productionName} />;
       }
 
@@ -3013,10 +3458,9 @@ export default function DashboardPage({
   const handleAIAction = async (id: string, action: "accept" | "dismiss") => {
     if (activeProjectId) {
       try {
-        const { continuity } = await import("@/app/lib/api");
         // "accept" maps to the engine's "confirm" action (human verified the issue).
         // "dismiss" maps directly to "dismiss" (human says it's not an error).
-        await continuity.feedback(
+        await apiContinuity.feedback(
           activeProjectId,
           id,
           action === "accept" ? "confirm" : "dismiss",

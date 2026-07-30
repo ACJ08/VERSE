@@ -3,23 +3,31 @@
  * React hooks that wrap the API client with loading/error/data state.
  * Keeps all async logic out of page components.
  */
-
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
-  auth, projects, continuity, upload, system, scriptIntelligence,
-  TokenStore, UserStore,
-  type VERSEUser, type Project, type TeamMember,
-  type ContinuityReport, type ContinuityIssue, type AuthResponse,
-  type UploadResult, type AnalyseScriptResult, type SceneAnalysis, APIError,
+  auth,
+  projects,
+  continuity,
+  upload,
+  system,
+  scriptIntelligence,
+  TokenStore,
+  UserStore,
+  type VERSEUser,
+  type Project,
+  type TeamMember,
+  type ContinuityReport,
+  type ContinuityIssue,
+  type AuthResponse,
+  type UploadResult,
+  type AnalyseScriptResult,
+  type SceneAnalysis,
+  type FootageUploadResult,
+  type ProjectScenes,
+  type EntityView,
+  type SceneView,
+  APIError,
 } from "./api";
-
-// ─── Generic async state ──────────────────────────────────────────────────────
-
-interface AsyncState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-}
 
 function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncState<T> & { refetch: () => void } {
   const [state, setState] = useState<AsyncState<T>>({ data: null, loading: true, error: null });
@@ -198,17 +206,87 @@ export function useFeedback(projectId: string) {
   return { submit, loading };
 }
 
-// ─── Upload hook ──────────────────────────────────────────────────────────────
+// ─── Scene & entity views ─────────────────────────────────────────────────────
+
+/**
+ * Per-scene rollup from the engine (score, issues, whether it has been shot).
+ * `fallback` is returned while the backend is unreachable so demo pages keep
+ * rendering their design-time content.
+ */
+export function useSceneViews(projectId: string | null, analyse = false) {
+  const [data, setData] = useState<ProjectScenes | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!projectId) return null;
+    setLoading(true); setError(null);
+    try {
+      const r = await continuity.scenes(projectId, analyse);
+      setData(r);
+      return r;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load scenes.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, analyse]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const scenes: SceneView[] = data?.scenes ?? [];
+  return { data, scenes, overview: data?.overview ?? null, loading, error, refetch: load };
+}
+
+/**
+ * Per-entity tracking state (expected vs observed per attribute, per scene).
+ * Filter by `entityType` ("character" / "prop") and `attribute` ("wears") to
+ * drive the costume and prop tracking screens off the same endpoint.
+ */
+export function useEntityViews(
+  projectId: string | null,
+  filters: { entityType?: string; attribute?: string } = {},
+) {
+  const { entityType, attribute } = filters;
+  const [data, setData] = useState<EntityView[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!projectId) return null;
+    setLoading(true); setError(null);
+    try {
+      const r = await continuity.entities(projectId, {
+        entity_type: entityType,
+        attribute,
+      });
+      setData(r);
+      return r;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load entities.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, entityType, attribute]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  return { entities: data, loading, error, refetch: load };
+}
+
+// ─── Upload hooks ─────────────────────────────────────────────────────────────
 
 export function useScreenplayUpload(projectId: string) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const uploadFile = useCallback(async (file: File): Promise<UploadResult | null> => {
+  const uploadFile = useCallback(async (file: File, analyse = false): Promise<UploadResult | null> => {
     setLoading(true); setError(null);
     try {
-      const r = await upload.screenplay(projectId, file);
+      const r = await upload.screenplay(projectId, file, analyse);
       setResult(r);
       return r;
     } catch (e) {
@@ -220,6 +298,36 @@ export function useScreenplayUpload(projectId: string) {
   }, [projectId]);
 
   return { uploadFile, loading, result, error };
+}
+
+/**
+ * Footage upload: the vision pipeline's scene JSON, or a video clip when the
+ * backend has a vision service configured. Analysis runs by default, so the
+ * result already carries the refreshed report and scene rollup.
+ */
+export function useFootageUpload(projectId: string) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<FootageUploadResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const uploadFootage = useCallback(async (
+    file: File,
+    opts: { sceneId?: string; entityAliases?: Record<string, string> } = {},
+  ): Promise<FootageUploadResult | null> => {
+    setLoading(true); setError(null);
+    try {
+      const r = await upload.footage(projectId, file, { ...opts, analyse: true });
+      setResult(r);
+      return r;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Footage upload failed.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  return { uploadFootage, loading, result, error };
 }
 
 // ─── Backend health hook ──────────────────────────────────────────────────────

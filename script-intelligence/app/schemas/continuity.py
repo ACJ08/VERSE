@@ -191,6 +191,15 @@ class SceneContinuity(BaseModel):
         1.0,
         description="Extraction confidence score (0.0 to 1.0).",
     )
+    action: Optional[str] = Field(
+        None,
+        description=(
+            "Scene action prose, excluding the slug line. Downstream continuity "
+            "reasoning reads this to detect scripted state changes ('SARAH removes "
+            "her blazer') and narrative events that may explain a discrepancy "
+            "('the crowd panics'). Truncated; use raw_scene_text for the full block."
+        ),
+    )
     raw_scene_text: Optional[str] = Field(
         None,
         description="The original scene text that was analysed.",

@@ -105,28 +105,51 @@ observation, referencing items by `name`.
   limitations).
 - `emotional_state`, `owner`, `state` — always `null`; not vision-detectable.
 
+## HTTP service
+
+`service.py` exposes the same pipeline over HTTP so the VERSE backend can process
+footage a user uploaded through the dashboard, instead of someone running the CLI
+by hand. Detection code is imported from `main.py`, so the CLI and the service
+emit byte-identical documents.
+
+```powershell
+uvicorn service:app --port 8200
+```
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Model status; confirms `pose_landmarker_lite.task` is present |
+| POST | `/process` | `video` + `scene_id` → the scene document shown above |
+| POST | `/process/ingest` | Same, then POSTs it to the continuity engine and returns its report |
+
+Models load once per process and are reused — loading YOLO and MediaPipe takes
+seconds and would otherwise dominate every request.
+
+Point the continuity engine at this service so its `/upload/footage` endpoint can
+accept raw video rather than only pre-computed JSON:
+
+```
+VISION_SERVICE_URL=http://localhost:8200
+```
+
 ## Known limitations
 
-- **BLOCKING for end-to-end integration: `PERSON_n` placeholder names won't match
-  script character names.** Per `continuity-engine/docs/INTEGRATION.md`, the engine
-  links script-side and footage-side facts by fuzzy-matching entity names
-  (`app/ingestion/entity_matcher.py`, 0.72 similarity threshold). A script character
-  named `"Sarah"` and a footage character named `"PERSON_1"` share no tokens and
-  will not match — they'll register as two unrelated entities, and *none* of that
-  character's footage facts (position, costume, movement, hand_usage) will link to
-  their script-side facts. This breaks every continuity check for that person, not
-  just hand/prop checks. Needs either a `--character-name` override at ingestion
-  time, or an identity-resolution step this pipeline doesn't currently have.
-- **`hand_usage` is modeled on the Prop entity, not attached to the Character who
-  holds it.** The documented Team 2 contract (`INTEGRATION.md`) expects `holds`/
-  `hand` as attributes on the *character's* detection object (e.g. `{"name": "Sarah",
-  "holds": "glass", "hand": "left"}`), so the engine can compare "who holds what in
-  which hand" against the script's per-character claim. We instead emit a standalone
-  `Prop` object with `hand_usage` on itself and `owner: null` — there's no fact
-  saying which character holds it. (Field naming itself is fine: `hand_usage` fuzzy-
-  matches the engine's `held_in_hand` alias at 0.84 similarity, well over the 0.72
-  threshold — `costume`→`wears` and `position`→`screen_position` also alias cleanly.
-  This is a structural gap, not a naming one.)
+- **`PERSON_n` placeholder names are not script character names.** The tracker
+  cannot know who it is looking at, so identity resolution happens at ingestion:
+  the engine's vision adapter takes an `entity_aliases` map
+  (`{"PERSON_1": "Sarah"}`) that joins track ids to script names, and warns when
+  a payload arrives with unmapped `PERSON_n` ids. Without a mapping, footage
+  facts register as their own entities and no comparison happens for that person
+  — supply the map from the dashboard's footage upload dialog, per-request on
+  `/continuity/ingest-adapted/footage`, or in the project's `entity_aliases`
+  config table. Track-id churn (below) means the mapping is per clip, not global.
+- **`hand_usage` is modelled on the Prop entity, not on the Character holding
+  it.** `owner` is always null here because the pipeline cannot attribute a prop
+  to a person. The engine's vision adapter closes the gap where it is safe to:
+  in a frame with exactly one detected person and a prop associated to a wrist,
+  it emits `holds` / `held_in_hand` on that character with
+  `source: "ai_inference"`, so the claim is compared but trusted below direct
+  detection. With two or more people in frame nothing is inferred.
 - **`hand_usage` requires a detected character.** MediaPipe Pose runs independently
   of YOLO's person detection, so it could find wrists in a frame where YOLO found
   no person (e.g. below the confidence threshold). If a frame has no detected
@@ -156,6 +179,7 @@ observation, referencing items by `name`.
 
 ```
 main.py                    CLI entry point, wires the pipeline together
+service.py                 FastAPI wrapper over main.py for backend integration
 src/
   frame_extractor.py       OpenCV frame sampling
   object_detector.py       YOLO wrapper (person + prop classes in one pass)

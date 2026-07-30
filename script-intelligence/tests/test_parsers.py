@@ -8,7 +8,11 @@ import pytest
 
 from app.parsers.scene_splitter import split_into_scenes, parse_scene_metadata
 from app.parsers.document_parser import extract_text, extract_txt
-from app.utils.text_utils import clean_screenplay_text, truncate_scene_text
+from app.utils.text_utils import (
+    clean_screenplay_text,
+    extract_action_prose,
+    truncate_scene_text,
+)
 
 
 def test_split_into_scenes_basic(sample_screenplay_text):
@@ -63,6 +67,47 @@ def test_truncate_scene_text():
     truncated = truncate_scene_text(text, max_chars=50, strategy="head")
     assert len(truncated) < 100
     assert "[...truncated...]" in truncated
+
+
+def test_extract_action_prose_keeps_description_and_drops_dialogue():
+    """`SceneContinuity.action` feeds downstream continuity reasoning.
+
+    The continuity engine mines this prose for scripted state changes and for
+    narrative events that can explain a discrepancy, so description lines must
+    survive and dialogue must not dilute them.
+    """
+    scene = """\
+INT. COFFEE SHOP - DAY
+
+Sarah sits by the window. She picks up a glass with her left hand.
+
+SARAH
+Are you sure about this?
+
+MARCUS
+(quietly)
+No.
+
+The crowd panics and rushes through the shop. Sarah removes her blue blazer.
+
+CUT TO:
+"""
+    action = extract_action_prose(scene)
+
+    assert action.startswith("Sarah sits by the window.")
+    assert "crowd panics" in action           # narrative trigger
+    assert "removes her blue blazer" in action  # scripted state change
+    assert "Are you sure about this?" not in action
+    assert "INT. COFFEE SHOP" not in action   # slug line lives in SceneMetadata
+    assert "(quietly)" not in action
+    assert "CUT TO" not in action
+
+
+def test_extract_action_prose_is_truncated_and_handles_empty_input():
+    assert extract_action_prose("") == ""
+    assert extract_action_prose("   \n\n  ") == ""
+    long_scene = "INT. ROOM - DAY\n\n" + ("She waits. " * 400)
+    assert len(extract_action_prose(long_scene, max_chars=100)) == 100
 
 
 def test_extract_txt_file():
