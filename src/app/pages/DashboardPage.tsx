@@ -803,7 +803,7 @@ function AIRecommendationCard({ rec, onAction }: { rec: typeof aiRecommendations
 // PRODUCER PAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ProducerOverview({ productionName, onAIAction, projectId }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void; projectId?: string }) {
+function ProducerOverview({ productionName, onAIAction, projectId, userName }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void; projectId?: string; userName?: string }) {
   const [showNewProd, setShowNewProd] = useState(false);
   const [newProdName, setNewProdName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -857,7 +857,7 @@ function ProducerOverview({ productionName, onAIAction, projectId }: { productio
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Good morning, Alex."
+        title={`Good morning, ${userName ? userName.split(" ")[0] : "there"}.`}
         subtitle={`Production intelligence summary for ${productionName}.`}
         actions={<>
           <Btn variant="secondary" icon={Download} onClick={() => {
@@ -1959,7 +1959,10 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
         );
       } catch { /* analysis optional */ } finally { setAnalysing(false); }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Upload failed.";
+      const isAuthError = e instanceof Error && (e.message.includes("401") || e.message.toLowerCase().includes("not authenticated") || e.message.toLowerCase().includes("sign in"));
+      const msg = isAuthError
+        ? "You must be signed in to upload a screenplay. Please sign out and sign in again."
+        : (e instanceof Error ? e.message : "Upload failed.");
       toast.error(msg);
     } finally {
       setUploading(false);
@@ -3349,12 +3352,13 @@ function SettingsPage() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function DashboardContent({
-  userRole, productionName, onAIAction, activeNav, projectId,
+  userRole, productionName, onAIAction, activeNav, projectId, userName,
 }: {
   userRole: UserRole; productionName: string;
   onAIAction: (id: string, action: "accept" | "dismiss") => void;
   activeNav: string;
   projectId?: string;
+  userName?: string;
 }) {
   // Settings page is shared across all roles
   if (activeNav === "Settings") return <SettingsPage />;
@@ -3368,9 +3372,9 @@ function DashboardContent({
         case "Analytics": return <ProducerAnalytics />;
         case "AI Insights": return <ProducerAIInsights />;
         case "Workspace": return <ProducerWorkspace />;
-        // Pass projectId so ProducerOverview can fetch live continuity issues
-        // from GET /continuity/issues/{id} instead of the static mock array.
-        default: return <ProducerOverview productionName={productionName} onAIAction={onAIAction} projectId={projectId} />;
+        // Pass projectId and userName so ProducerOverview can show the real user's
+        // name and fetch live continuity issues from GET /continuity/issues/{id}.
+        default: return <ProducerOverview productionName={productionName} onAIAction={onAIAction} projectId={projectId} userName={userName} />;
       }
 
     case "director":
@@ -3504,12 +3508,13 @@ export default function DashboardPage({
         <main className="flex-1 overflow-y-auto p-5 md:p-6" style={{ background: "linear-gradient(180deg, #F0EEFF 0%, #F5F3FF 100%)" }}>
           <div className="max-w-6xl mx-auto">
             <DashboardContent
-              userRole={currentRole}
-              productionName={productionName}
-              onAIAction={handleAIAction}
-              activeNav={activeNav}
-              projectId={activeProjectId}
-            />
+                userRole={currentRole}
+                productionName={productionName}
+                onAIAction={handleAIAction}
+                activeNav={activeNav}
+                projectId={activeProjectId}
+                userName={userName}
+              />
           </div>
         </main>
       </div>

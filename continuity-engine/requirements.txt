@@ -5,6 +5,8 @@ uvicorn[standard]>=0.27,<1
 python-multipart>=0.0.9,<1
 python-jose[cryptography]>=3.3,<4
 bcrypt>=4.0,<6
+pypdf>=4.0,<6             # PDF text extraction in upload.py (replaces pymupdf)
+python-dotenv>=1.0,<2     # Load .env into os.environ on startup
 
 # optional – IBM watsonx (install separately when credentials are available)
 # ibm-watsonx-ai>=1.0

@@ -125,10 +125,19 @@ export default function App() {
       case "sign-in":
         return (
           <SignInPage
-            // When a demo role label is passed, resolve it and jump straight to the dashboard
+            // After login, read the persisted user back from UserStore so that
+            // userName and userEmail reflect the real account, not the demo default.
             onSignIn={(roleLabel?: string) => {
-              const resolvedRole = resolveRoleFromLabel(roleLabel);
-              if (resolvedRole) {
+              const apiUser = UserStore.get();
+              const resolvedRole = resolveRoleFromLabel(roleLabel ?? apiUser?.role);
+              if (apiUser) {
+                navigateTo("dashboard", {
+                  selectedRole: resolvedRole ?? "producer",
+                  userName: apiUser.name,
+                  userEmail: apiUser.email,
+                });
+              } else if (resolvedRole) {
+                // Demo login (no JWT) — use the role title as the display name
                 navigateTo("dashboard", {
                   selectedRole: resolvedRole,
                   userName: `${userRoles.find((r) => r.id === resolvedRole)?.title} Demo`,
@@ -146,7 +155,14 @@ export default function App() {
       case "create-account":
         return (
           <CreateAccountPage
-            onAccountCreated={() => navigateTo("email-verification")}
+            onAccountCreated={() => {
+              // After registration, update userEmail from the newly created user
+              const apiUser = UserStore.get();
+              if (apiUser) {
+                setAppState((prev) => ({ ...prev, userEmail: apiUser.email, userName: apiUser.name }));
+              }
+              navigateTo("email-verification");
+            }}
             onSignIn={() => navigateTo("sign-in")}
             onBack={() => navigateTo("landing")}
           />

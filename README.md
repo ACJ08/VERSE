@@ -13,6 +13,7 @@
 <br>
 
 ![IBM Granite](https://img.shields.io/badge/IBM-Granite%203.1-5C2D91?style=for-the-badge)
+![LangChain](https://img.shields.io/badge/LangChain-Orchestration-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
 ![Open Source](https://img.shields.io/badge/Open%20Source-LLM-28A745?style=for-the-badge)
 ![Explainable AI](https://img.shields.io/badge/Explainable-AI-FFB000?style=for-the-badge)
 ![Knowledge Graph](https://img.shields.io/badge/Knowledge-Graph-00A86B?style=for-the-badge)
@@ -48,7 +49,7 @@ Core capabilities include:
 
 - 📖 **Screenplay Understanding** – Automatically extracts structured information such as scenes, characters, props, wardrobe, locations, and timelines from screenplay documents.
 - 🧠 **Semantic Production Memory** – Maintains contextual relationships between production elements across filming, allowing AI to remember evolving production states.
-- 🎥 **Continuity Intelligence** – Detects inconsistencies in wardrobe, props, narrative progression, scene sequencing, and production updates before filming.
+- 🎥 **Continuity Intelligence** – Powered by LangChain, VERSE orchestrates AI reasoning across screenplay understanding, semantic production memory, and knowledge graph retrieval to detect inconsistencies in wardrobe, props, character states, narrative progression, scene sequencing, and production updates before filming.
 - 🔍 **Explainable AI Recommendations** – Provides transparent explanations, confidence scores, and actionable recommendations instead of black-box AI decisions.
 - 🤝 **Collaborative Dashboard** – Enables directors, script supervisors, producers, and other departments to access shared continuity insights from a centralized interface.
 
@@ -58,7 +59,7 @@ By combining semantic reasoning with explainable AI, VERSE improves collaboratio
 
 # 🤖 AI Approach and Architecture
 
-VERSE adopts a **Human-Centered Explainable AI (XAI)** architecture that combines Large Language Models (LLMs), semantic reasoning, knowledge graphs, and persistent contextual memory to support continuity management.
+VERSE adopts a Human-Centered Explainable AI (XAI) architecture that combines the IBM Granite 3.1 open-source large language model, LangChain for AI workflow orchestration, semantic reasoning, knowledge graphs, and persistent contextual memory to support intelligent continuity management.
 
 ## AI Workflow
 
@@ -66,7 +67,8 @@ VERSE adopts a **Human-Centered Explainable AI (XAI)** architecture that combine
 Screenplay Input
         │
         ▼
-Screenplay Understanding
+IBM Granite 3.1
+(Screenplay Understanding)
         │
         ▼
 Semantic Information Extraction
@@ -76,6 +78,9 @@ Semantic Production Memory
         │
         ▼
 Knowledge Graph Construction
+        │
+        ▼
+LangChain Orchestration
         │
         ▼
 Continuity Intelligence Engine
@@ -119,9 +124,12 @@ This enables persistent contextual reasoning throughout filming.
 
 ---
 
+#### 🔗 LangChain Orchestration Engine
+Uses LangChain to orchestrate the end-to-end AI workflow by connecting IBM Granite 3.1 with semantic production memory, knowledge graph retrieval, and continuity reasoning. It coordinates information flow across multiple AI components, enabling contextual analysis, explainable continuity recommendations, and persistent reasoning throughout the production lifecycle.
+
 #### 🎬 Continuity Intelligence Engine
 
-Automatically detects continuity inconsistencies involving:
+Powered by LangChain-orchestrated reasoning, the Continuity Intelligence Engine combines screenplay knowledge, semantic production memory, and knowledge graph context to automatically detect continuity inconsistencies involving:
 
 - Costume changes
 - Prop placement
@@ -191,6 +199,8 @@ VERSE showcases how AI can empower creative professionals while preserving artis
 IBM Bob played an important role throughout the design and development process of VERSE as an **AI-powered innovation assistant**.
 
 Although IBM Bob is **not embedded in the final product**, it significantly contributed during the project's Design Thinking process by helping the team refine ideas, validate concepts, and explore AI-driven solutions.
+
+https://drive.google.com/drive/folders/1fSKc9YbZJ7gcXvcSY_hScl1diUZ-L4_1?usp=sharing
 
 IBM Bob was used for:
 

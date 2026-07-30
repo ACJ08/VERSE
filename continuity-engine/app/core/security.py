@@ -13,8 +13,11 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import JWTError, jwt  # noqa: F401  (JWTError re-exported for callers)
 
+feature/add-script-intelligence-module
 # Accept both JWT_SECRET_KEY (documented in .env.example) and the shorter JWT_SECRET
-# for backward compatibility with any existing deployments.
+# for backward compatibility with any existing deployment
+# Support both JWT_SECRET (legacy) and JWT_SECRET_KEY (documented in .env.example)
+main
 SECRET_KEY = (
     os.getenv("JWT_SECRET_KEY")
     or os.getenv("JWT_SECRET")

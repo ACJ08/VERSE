@@ -7,7 +7,7 @@
  * Falls back to "" (same-origin) so the app still works without a backend.
  */
 
-const BASE = (import.meta.env.VITE_API_URL as string) ?? "";
+const BASE: string = import.meta.env.VITE_API_URL || "";
 
 // ─── Token storage ─────────────────────────────────────────────────────────────
 

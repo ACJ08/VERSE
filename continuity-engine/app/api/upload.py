@@ -65,7 +65,6 @@ def _extract_text(filename: str, data: bytes) -> str:
     if ext == "pdf":
         try:
             import io
-
             from pypdf import PdfReader
             reader = PdfReader(io.BytesIO(data))
             return "\n".join(page.extract_text() or "" for page in reader.pages)
