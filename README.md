@@ -192,6 +192,8 @@ IBM Bob played an important role throughout the design and development process o
 
 Although IBM Bob is **not embedded in the final product**, it significantly contributed during the project's Design Thinking process by helping the team refine ideas, validate concepts, and explore AI-driven solutions.
 
+https://drive.google.com/drive/folders/1fSKc9YbZJ7gcXvcSY_hScl1diUZ-L4_1?usp=sharing
+
 IBM Bob was used for:
 
 ### 💡 Problem Framing
