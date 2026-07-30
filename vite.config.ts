@@ -31,6 +31,19 @@ export default defineConfig({
     },
   },
 
+  // Proxy all backend routes through Vite so there are no CORS issues in dev.
+  // The frontend uses VITE_API_URL="" (empty = same-origin) and Vite rewrites
+  // matching paths to http://localhost:8000.
+  server: {
+    proxy: {
+      '/auth':        { target: 'http://localhost:8000', changeOrigin: true },
+      '/upload':      { target: 'http://localhost:8000', changeOrigin: true },
+      '/projects':    { target: 'http://localhost:8000', changeOrigin: true },
+      '/continuity':  { target: 'http://localhost:8000', changeOrigin: true },
+      '/health':      { target: 'http://localhost:8000', changeOrigin: true },
+    },
+  },
+
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

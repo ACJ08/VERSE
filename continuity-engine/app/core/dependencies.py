@@ -11,10 +11,10 @@ from app.core.database import db
 from app.core.security import decode_token
 
 
-def get_current_user(authorization: str = Header(...)) -> dict:
+def get_current_user(authorization: str | None = Header(default=None)) -> dict:
     """Extract and validate JWT from Authorization: Bearer <token> header."""
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Missing or invalid Authorization header.")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Not authenticated. Please sign in to continue.")
     token = authorization[7:]
     try:
         payload = decode_token(token)

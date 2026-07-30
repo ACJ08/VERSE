@@ -12,6 +12,16 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Load .env from the continuity-engine directory so WATSONX_*, JWT_SECRET,
+# SMTP_*, and CORS_ORIGINS are available to the rest of the application.
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).resolve().parent / ".env"
+    load_dotenv(_env_path, override=False)  # override=False: real env vars win
+except ImportError:
+    pass  # python-dotenv not installed — rely on shell environment
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
