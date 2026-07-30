@@ -248,6 +248,79 @@ class ContinuityReport(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Derived views (dashboard reads)
+# --------------------------------------------------------------------------- #
+
+
+class AttributeState(str, Enum):
+    """Where one (entity, attribute, scene) slot stands after comparison."""
+
+    MATCH = "match"                   # script and footage agree
+    CONFLICT = "conflict"             # they disagree — an issue exists
+    UNVERIFIED = "unverified"         # expected, but nothing observed yet
+    OBSERVED_ONLY = "observed_only"   # footage saw something the script never stated
+
+
+class SlotView(BaseModel):
+    """One tracked attribute of one entity in one scene, with both halves.
+
+    This is the "expected vs observed with sources" row the continuity and
+    costume/prop tracking screens are built from.
+    """
+
+    entity: EntityRef
+    attribute: str
+    scene_id: str | None = None
+    state: AttributeState
+    expected: ObservationRef | None = None
+    observed: ObservationRef | None = None
+    issue_id: str | None = None
+    severity: Severity | None = None
+    human_confirmed: bool = False
+    flagged: bool = False
+    """Whether the engine raised an issue for this slot.
+
+    A `conflict` slot can be unflagged: the values differ but the observation's
+    confidence sits below `min_conflict_confidence`, so the engine records the
+    disagreement without penalising the score. Show these as "differs — low
+    confidence" rather than as errors.
+    """
+
+
+class EntityView(BaseModel):
+    """Everything tracked about one production element across the project."""
+
+    entity: EntityRef
+    scene_ids: list[str] = Field(default_factory=list)
+    slots: list[SlotView] = Field(default_factory=list)
+    attributes: list[str] = Field(default_factory=list)
+    issue_count: int = 0
+    conflict_count: int = 0
+    fact_count: int = 0
+    latest: dict[str, Any] = Field(default_factory=dict)  # attribute -> current value
+
+
+class SceneView(BaseModel):
+    """Per-scene rollup: what it is, what it scored, and what went wrong."""
+
+    scene_id: str
+    sequence: int = 0
+    location: str | None = None
+    time_of_day: str | None = None
+    slugline: str | None = None
+    score: float = 100.0
+    category_scores: dict[str, float] = Field(default_factory=dict)
+    issue_count: int = 0
+    issues_by_severity: dict[str, int] = Field(default_factory=dict)
+    categories: list[Category] = Field(default_factory=list)
+    entities: list[EntityRef] = Field(default_factory=list)
+    sources: list[SourceType] = Field(default_factory=list)
+    has_footage: bool = False
+    fact_count: int = 0
+    headline: str = ""
+
+
+# --------------------------------------------------------------------------- #
 # Feedback
 # --------------------------------------------------------------------------- #
 

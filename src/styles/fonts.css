@@ -1,0 +1,19 @@
+/* Google Fonts import for VERSE application */
+/* Manrope: geometric sans for display headings — cinematic, modern */
+/* Inter: clean humanist sans for body text — readable, professional */
+/* JetBrains Mono: monospaced for data labels and code snippets */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-display: 'Manrope', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+}
