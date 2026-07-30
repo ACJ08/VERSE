@@ -2,7 +2,7 @@
 
 Living status doc. Update when a phase moves; keep it short.
 
-**Last updated:** 2026-07-30 · **Tests:** 133 passing · **Demos:** both working
+**Last updated:** 2026-07-30 · **Tests:** 156 passing · **Demos:** both working
 (`python demo/pipeline.py`, `python demo/server.py`)
 
 ## Phases
@@ -13,7 +13,7 @@ Living status doc. Update when a phase moves; keep it short.
 | 2 | Dynamic ingestion | ✅ Done | Nested JSON, aliases, unknown fields, raw labels kept |
 | 3 | Knowledge graph | ✅ Done | NetworkX + timeline + SQLite |
 | 4 | Rule-based comparison | ✅ Done | 8 rules incl. custom-attribute catch-all |
-| 5 | Natural-language reasoning | 🟡 Partial | Rule-based only — **no LLM wired yet** |
+| 5 | Natural-language reasoning | 🟡 Partial | Rule-based path + pluggable LLM adapters (watsonx, LangChain); no creds exercised |
 | 6 | Scoring & reporting | ✅ Done | Category + overall, explanations, fixes |
 | 7 | Human feedback | ✅ Done | Confirm/dismiss/override, history preserved |
 | 8 | Integration | ✅ Done | Adapters for teams 1 + 2, upload + pipeline endpoints, dashboard views, frontend wired |
@@ -35,11 +35,13 @@ four found running real team 1/2 payloads through the pipeline (see Log).
 
 ## Known gaps
 
-- **No LLM anywhere in this package.** Entity matching, explanations and
-  suggestions all use the rule-based path. Hooks exist (`llm=`,
-  `SemanticMatcher`) and `services/watsonx.py` implements them, but no
-  credentials have been exercised. Screenplay extraction *does* now reach
-  Granite when `SCRIPT_SERVICE_URL` points at team 1's service.
+- **No LLM exercised yet, but the seams are ready.** Entity matching,
+  explanations and suggestions still run the rule-based path by default. Two
+  adapters implement the `llm=` / `SemanticMatcher` hooks — `services/watsonx.py`
+  (IBM Granite) and `services/langchain_adapter.py` (provider-agnostic LangChain,
+  selected at runtime with `VERSE_LLM_MODEL`) — but no credentials have been
+  exercised, so both currently resolve to `None`. Screenplay extraction *does*
+  now reach Granite when `SCRIPT_SERVICE_URL` points at team 1's service.
 - **Assumption triggers are a hand-written keyword table.** Fine for the demo,
   will miss real screenplay phrasing. Needs the LLM path.
 - **Tuning is still guesswork.** Penalties, thresholds and trust levels have
@@ -70,6 +72,15 @@ four found running real team 1/2 payloads through the pipeline (see Log).
    multi-worker deployment.
 
 ## Log
+
+- **2026-07-30** — Provider-agnostic LangChain LLM adapter
+  (`services/langchain_adapter.py`). Wraps any LangChain chat model / Runnable
+  behind the existing `LanguageModel` protocol, so it drops into
+  `ContinuityEngine(llm=...)` next to `WatsonxAdapter` with no engine changes and
+  the same silent rule-based fallback. `get_or_create_engine` now prefers it when
+  `VERSE_LLM_MODEL` (e.g. `anthropic:claude-sonnet-5`) is set, else watsonx, else
+  None. 10 tests, duck-typed against a fake model — no langchain install needed to
+  run the suite.
 
 - **2026-07-22** — Demo harness for teams 1, 2, 4, 5. 60 tests pass; pipeline
   finds all 5 planted errors and passes all 3 suppression checks. Five more

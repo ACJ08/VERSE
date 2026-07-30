@@ -36,19 +36,23 @@ def get_or_create_engine(project_id: str) -> ContinuityEngine:
     """Return the cached engine for *project_id*, rehydrating from FactStore if needed.
 
     Construction order matters:
-    1. create_llm()            — WatsonxAdapter if WATSONX_API_KEY is set, else None.
-    2. create_semantic_matcher — Granite embedding matcher built from the same adapter.
-       Passed to ContinuityEngine so EntityMatcher uses it as its SemanticMatcher
-       fallback instead of the keyword-synonym table.  When credentials are absent
-       both return None and the engine degrades to keyword + fuzzy-string matching.
+    1. LLM selection — a LangChain model (`VERSE_LLM_MODEL`, any provider) takes
+       precedence; otherwise WatsonxAdapter if WATSONX_API_KEY is set; else None.
+    2. create_semantic_matcher — Granite embedding matcher built from the watsonx
+       adapter. Passed to ContinuityEngine so EntityMatcher uses it as its
+       SemanticMatcher fallback instead of the keyword-synonym table. When
+       credentials are absent both return None and the engine degrades to
+       keyword + fuzzy-string matching.
     3. ContinuityEngine(llm=, semantic_matcher=) — LLM is forwarded to AssumptionEngine,
        ExplanationWriter, and SuggestionWriter; semantic_matcher to EntityMatcher.
     """
     if project_id not in _ENGINES:
         config = ProjectConfig.from_dict({"project_id": project_id})
+        from app.services.langchain_adapter import create_llm_from_env
         from app.services.watsonx import create_llm, create_semantic_matcher
-        llm = create_llm()
-        semantic_matcher = create_semantic_matcher(llm)
+        watsonx = create_llm()
+        llm = create_llm_from_env() or watsonx
+        semantic_matcher = create_semantic_matcher(watsonx)
         engine = ContinuityEngine(
             config=config,
             store=_STORE,
