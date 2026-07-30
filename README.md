@@ -48,7 +48,7 @@ Core capabilities include:
 
 - 📖 **Screenplay Understanding** – Automatically extracts structured information such as scenes, characters, props, wardrobe, locations, and timelines from screenplay documents.
 - 🧠 **Semantic Production Memory** – Maintains contextual relationships between production elements across filming, allowing AI to remember evolving production states.
-- 🎥 **Continuity Intelligence** – Detects inconsistencies in wardrobe, props, narrative progression, scene sequencing, and production updates before filming.
+- 🎥 **Continuity Intelligence** – Powered by LangChain, VERSE orchestrates AI reasoning across screenplay understanding, semantic production memory, and knowledge graph retrieval to detect inconsistencies in wardrobe, props, character states, narrative progression, scene sequencing, and production updates before filming.
 - 🔍 **Explainable AI Recommendations** – Provides transparent explanations, confidence scores, and actionable recommendations instead of black-box AI decisions.
 - 🤝 **Collaborative Dashboard** – Enables directors, script supervisors, producers, and other departments to access shared continuity insights from a centralized interface.
 
@@ -58,7 +58,7 @@ By combining semantic reasoning with explainable AI, VERSE improves collaboratio
 
 # 🤖 AI Approach and Architecture
 
-VERSE adopts a **Human-Centered Explainable AI (XAI)** architecture that combines Large Language Models (LLMs), semantic reasoning, knowledge graphs, and persistent contextual memory to support continuity management.
+VERSE adopts a Human-Centered Explainable AI (XAI) architecture that combines the IBM Granite 3.1 open-source large language model, LangChain for AI workflow orchestration, semantic reasoning, knowledge graphs, and persistent contextual memory to support intelligent continuity management.
 
 ## AI Workflow
 
@@ -66,7 +66,8 @@ VERSE adopts a **Human-Centered Explainable AI (XAI)** architecture that combine
 Screenplay Input
         │
         ▼
-Screenplay Understanding
+IBM Granite 3.1
+(Screenplay Understanding)
         │
         ▼
 Semantic Information Extraction
@@ -76,6 +77,9 @@ Semantic Production Memory
         │
         ▼
 Knowledge Graph Construction
+        │
+        ▼
+LangChain Orchestration
         │
         ▼
 Continuity Intelligence Engine
@@ -119,9 +123,12 @@ This enables persistent contextual reasoning throughout filming.
 
 ---
 
+#### 🔗 LangChain Orchestration Engine
+Uses LangChain to orchestrate the end-to-end AI workflow by connecting IBM Granite 3.1 with semantic production memory, knowledge graph retrieval, and continuity reasoning. It coordinates information flow across multiple AI components, enabling contextual analysis, explainable continuity recommendations, and persistent reasoning throughout the production lifecycle.
+
 #### 🎬 Continuity Intelligence Engine
 
-Automatically detects continuity inconsistencies involving:
+Powered by LangChain-orchestrated reasoning, the Continuity Intelligence Engine combines screenplay knowledge, semantic production memory, and knowledge graph context to automatically detect continuity inconsistencies involving:
 
 - Costume changes
 - Prop placement
