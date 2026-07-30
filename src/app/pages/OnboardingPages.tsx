@@ -8,7 +8,7 @@ import { ArrowLeft, ArrowRight, CheckCircle, Film, Calendar, Users, Hash } from 
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import verseLogo from "@/imports/VERSE_LOGO_2.png";
 import { userRoles, productionTypes, type UserRole, type ProductionType } from "@/app/data/mockData";
-import { projects } from "@/app/lib/api";
+import { projects, auth } from "@/app/lib/api";
 
 // ─── Onboarding Layout ────────────────────────────────────────────────────────
 
@@ -294,11 +294,22 @@ export function CreateWorkspacePage({
     setWorkspaceName(`VERSE — ${value}`);
   };
 
-  // Creates workspace via the backend API; falls back gracefully if offline
+  // Creates workspace via the backend API; falls back gracefully if offline.
+  // Also persists the selected role to the user profile via PATCH /auth/me so
+  // that future sessions (and other team members) see the correct role.
   const handleCreateWorkspace = async () => {
     if (!productionName.trim()) return;
     setIsLoading(true);
     try {
+      // 1. Update user role if one was selected during onboarding
+      if (selectedRole) {
+        try {
+          await auth.updateProfile({ role: selectedRole });
+        } catch {
+          // Non-critical — role update failure should not block workspace creation
+        }
+      }
+      // 2. Create the project / workspace
       await projects.create({
         name: productionName,
         workspace_name: workspaceName,

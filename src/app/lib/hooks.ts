@@ -6,11 +6,11 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
-  auth, projects, continuity, upload, system,
+  auth, projects, continuity, upload, system, scriptIntelligence,
   TokenStore, UserStore,
   type VERSEUser, type Project, type TeamMember,
   type ContinuityReport, type ContinuityIssue, type AuthResponse,
-  type UploadResult, APIError,
+  type UploadResult, type AnalyseScriptResult, type SceneAnalysis, APIError,
 } from "./api";
 
 // ─── Generic async state ──────────────────────────────────────────────────────
@@ -234,4 +234,73 @@ export function useBackendHealth() {
   }, []);
 
   return online;
+}
+
+// ─── Script Intelligence hooks ────────────────────────────────────────────────
+
+/** Health state of the script-intelligence microservice. */
+export function useScriptIntelligenceHealth() {
+  const [online, setOnline] = useState<boolean | null>(null);
+  const [graniteConfigured, setGraniteConfigured] = useState(false);
+
+  useEffect(() => {
+    scriptIntelligence.health()
+      .then((res) => {
+        setOnline(res.status === "ok");
+        setGraniteConfigured(res.granite_configured);
+      })
+      .catch(() => setOnline(false));
+  }, []);
+
+  return { online, graniteConfigured };
+}
+
+/** Upload a screenplay to the script-intelligence service for AI analysis,
+ *  then automatically forward the structured scene results to the
+ *  continuity engine via /analyse-and-ingest. */
+export function useScriptAnalyseAndIngest(projectId: string) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<AnalyseScriptResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = useCallback(async (file: File): Promise<AnalyseScriptResult | null> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await scriptIntelligence.analyseAndIngest(file, projectId);
+      setResult(res);
+      return res;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Analysis failed.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  return { run, loading, result, error };
+}
+
+/** Analyse a single scene text block using the local Granite model. */
+export function useSceneAnalysis() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<SceneAnalysis | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const analyse = useCallback(async (sceneText: string, sceneId?: string): Promise<SceneAnalysis | null> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await scriptIntelligence.analyseScene(sceneText, sceneId);
+      setResult(res);
+      return res;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Scene analysis failed.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { analyse, loading, result, error };
 }

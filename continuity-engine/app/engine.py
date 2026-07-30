@@ -38,6 +38,7 @@ from app.reporting.explanations import ExplanationWriter, LanguageModel
 from app.reporting.suggestions import SuggestionWriter
 from app.scoring.category_scores import CategoryScorer
 from app.scoring.overall_score import overall_score, summarise
+from app.services.extraction import GraniteFactExtractor
 
 
 class ContinuityEngine:
@@ -84,6 +85,11 @@ class ContinuityEngine:
         self._matcher = EntityMatcher(self.config, _sm)
         self._parser = DynamicParser(self.config, self._normaliser)
 
+        # Granite fact extractor — used when extractor == "granite" and the
+        # Ollama/local Granite client is reachable.  Failures are silently ignored
+        # so the engine always produces results regardless of LLM availability.
+        self._granite_extractor: GraniteFactExtractor | None = self._build_granite_extractor()
+
         self.graph = KnowledgeGraph(self.config, self._matcher)
         self.memory = ProductionMemory(self.graph, self.config)
         self.assumptions = AssumptionEngine(self.config, llm=llm)
@@ -115,6 +121,18 @@ class ContinuityEngine:
 
     def _ingest(self, payload: Any, source: SourceType, extractor: str | None) -> list[Fact]:
         facts = self._parser.parse(payload, source, extractor)
+
+        # If the caller requested "granite" extraction and a local Granite server
+        # is available, augment the parsed facts with Granite-extracted facts for
+        # any raw scene text blocks present in the payload.
+        if extractor == "granite" and self._granite_extractor is not None:
+            extra = self._extract_granite_facts(payload, source)
+            # Merge: prefer already-parsed facts; add Granite extras that aren't duplicates.
+            existing_ids = {(f.entity.key, f.attribute, f.scene_id) for f in facts}
+            for f in extra:
+                if (f.entity.key, f.attribute, f.scene_id) not in existing_ids:
+                    facts.append(f)
+
         stored = self.graph.add_facts(facts)
         self.assumptions.ingest(stored, self.graph.timeline.sequence_of)
         if self.store is not None:
@@ -185,6 +203,55 @@ class ContinuityEngine:
 
     def stats(self) -> dict[str, int]:
         return self.graph.stats()
+
+    # -- Granite extractor helpers ------------------------------------------- #
+
+    @staticmethod
+    def _build_granite_extractor() -> "GraniteFactExtractor | None":
+        """Try to create a GraniteFactExtractor backed by the local Granite/Ollama server.
+
+        Returns None (silently) when the server is not reachable or the library
+        is not installed — the engine continues without Granite augmentation.
+        """
+        try:
+            from app.services.granite_client import GraniteClient
+            return GraniteFactExtractor(GraniteClient())
+        except Exception:
+            return None
+
+    def _extract_granite_facts(self, payload: Any, source: SourceType) -> list[Fact]:
+        """Extract additional facts from scene text blobs using the Granite client.
+
+        Walks the payload looking for "action" or "text" string fields inside
+        scene objects and runs the Granite extractor on each.
+        """
+        import re
+
+        facts: list[Fact] = []
+        if not isinstance(payload, dict):
+            return facts
+
+        scenes = payload.get("scenes") or []
+        if not isinstance(scenes, list):
+            return facts
+
+        for scene in scenes:
+            if not isinstance(scene, dict):
+                continue
+            scene_id = scene.get("scene_id") or scene.get("id") or None
+            text_blob = scene.get("action") or scene.get("text") or ""
+            if not isinstance(text_blob, str) or not text_blob.strip():
+                continue
+            try:
+                extracted = self._granite_extractor.extract_scene_facts(  # type: ignore[union-attr]
+                    scene_text=text_blob,
+                    scene_id=scene_id,
+                )
+                facts.extend(extracted)
+            except Exception:
+                pass  # Granite call failed — skip augmentation for this scene
+
+        return facts
 
     # -- internals ---------------------------------------------------------- #
 

@@ -13,7 +13,13 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import JWTError, jwt  # noqa: F401  (JWTError re-exported for callers)
 
-SECRET_KEY = os.getenv("JWT_SECRET", "verse-dev-secret-change-in-production")
+# Accept both JWT_SECRET_KEY (documented in .env.example) and the shorter JWT_SECRET
+# for backward compatibility with any existing deployments.
+SECRET_KEY = (
+    os.getenv("JWT_SECRET_KEY")
+    or os.getenv("JWT_SECRET")
+    or "verse-dev-secret-change-in-production"
+)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 72
 
