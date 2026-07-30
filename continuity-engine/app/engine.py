@@ -186,6 +186,16 @@ class ContinuityEngine:
     def stats(self) -> dict[str, int]:
         return self.graph.stats()
 
+    @property
+    def normaliser(self) -> Normaliser:
+        """Value/attribute canonicaliser — needed to ask "do these two agree?"."""
+        return self._normaliser
+
+    @property
+    def scorer(self) -> CategoryScorer:
+        """The project's scorer, so derived views score the same way reports do."""
+        return self._scorer
+
     # -- internals ---------------------------------------------------------- #
 
     def _sync_dismissals(self) -> None:

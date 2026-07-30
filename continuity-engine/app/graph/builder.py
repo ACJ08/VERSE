@@ -144,8 +144,30 @@ class KnowledgeGraph:
     def scene_ids(self) -> list[str]:
         return [node.scene_id for node in self.timeline.ordered()]
 
+    def facts_in_scene(self, scene_id: str) -> list[Fact]:
+        """Every fact recorded against one scene, any entity or attribute."""
+        return [
+            fact
+            for key, buckets in self._facts.items()
+            for fact in buckets.get(scene_id, [])
+        ]
+
+    def facts_for_entity(self, entity_key: str) -> list[Fact]:
+        """Every fact about one entity, across all attributes and scenes."""
+        return [
+            fact
+            for (key, _attribute), buckets in self._facts.items()
+            if key == entity_key
+            for facts in buckets.values()
+            for fact in facts
+        ]
+
     def entity(self, entity_key: str) -> EntityRef | None:
         return self._matcher.entities.get(entity_key)
+
+    def entities(self) -> dict[str, EntityRef]:
+        """Canonical entities keyed by their normalised identity."""
+        return self._matcher.entities
 
     def fact(self, fact_id: str) -> Fact | None:
         return self._by_id.get(fact_id)

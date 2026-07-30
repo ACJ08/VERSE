@@ -65,11 +65,20 @@ class ProjectConfig:
 
     @property
     def attribute_aliases(self) -> dict[str, list[str]]:
-        return self._data.get("attribute_aliases", {})
+        return _alias_table(self._data.get("attribute_aliases", {}))
 
     @property
     def value_synonyms(self) -> dict[str, list[str]]:
-        return self._data.get("value_synonyms", {})
+        return _alias_table(self._data.get("value_synonyms", {}))
+
+    @property
+    def entity_aliases(self) -> dict[str, list[str]]:
+        """Producer-specific entity name aliases ("PERSON_1" -> "Sarah").
+
+        Vision tracks anonymous ids and the script names people; this table is
+        how a production declares the join. Consumed by the vision adapter.
+        """
+        return _alias_table(self._data.get("entity_aliases", {}))
 
     @property
     def assumption_ttl(self) -> int:
@@ -90,6 +99,21 @@ class ProjectConfig:
 
     def raw(self) -> dict[str, Any]:
         return self._data
+
+
+def _alias_table(raw: dict[str, Any]) -> dict[str, list[str]]:
+    """Keep only real alias groups from a config table.
+
+    The config files carry `_note` documentation strings alongside the data.
+    Without this filter a note is iterated character by character, so every
+    single letter becomes an alias — which made the keyword semantic matcher
+    score any two names at 0.9 and merge unrelated entities into one node.
+    """
+    return {
+        canonical: [str(v) for v in variants]
+        for canonical, variants in raw.items()
+        if not canonical.startswith("_") and isinstance(variants, list)
+    }
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

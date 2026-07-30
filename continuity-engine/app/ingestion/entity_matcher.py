@@ -8,6 +8,7 @@ graph code.
 
 from __future__ import annotations
 
+import re
 from typing import Callable, Protocol
 
 from app.config import ProjectConfig
@@ -64,12 +65,19 @@ class EntityMatcher:
         return registered
 
     def _find_match(self, entity: EntityRef) -> EntityRef | None:
+        # Scene ids are exact identifiers, never fuzzy names: "SCENE_011" and
+        # "SCENE_012" score 0.89 on string similarity but are different scenes.
+        if entity.type is EntityType.SCENE:
+            return None
+
         threshold = self._config.threshold("entity_match_similarity", 0.72)
         best: EntityRef | None = None
         best_score = 0.0
 
         for candidate in self._canonical.values():
             if not _types_compatible(candidate.type, entity.type):
+                continue
+            if _enumerated_siblings(entity.key, candidate.key):
                 continue
             score = _similarity(entity.key, candidate.key)
             if score < threshold and self._semantic is not None:
@@ -82,6 +90,25 @@ class EntityMatcher:
     def alias_map(self) -> dict[str, str]:
         """Exposed for reporting so the UI can explain why two names merged."""
         return dict(self._aliases)
+
+
+_ENUMERATED = re.compile(r"^(?P<stem>.*?)[_\-]?(?P<number>\d+)$")
+
+
+def _enumerated_siblings(a: str, b: str) -> bool:
+    """True for two members of the same numbered series ("person_2" / "person_3").
+
+    Vision tracks people as PERSON_1, PERSON_2, ... — names that differ by one
+    digit and so score 0.88 on string similarity. They are distinct tracks, and
+    merging them attributes one person's wardrobe to another.
+    """
+    left, right = _ENUMERATED.match(a), _ENUMERATED.match(b)
+    if left is None or right is None:
+        return False
+    return (
+        left.group("stem") == right.group("stem")
+        and left.group("number") != right.group("number")
+    )
 
 
 def _types_compatible(a: EntityType, b: EntityType) -> bool:
@@ -104,8 +131,22 @@ def keyword_semantic_matcher(
     def match(left: str, right: str) -> float:
         l, r = left.lower(), right.lower()
         for group in groups:
-            if any(term in l for term in group) and any(term in r for term in group):
+            if any(_mentions(l, term) for term in group) and any(_mentions(r, term) for term in group):
                 return 0.9
         return 0.0
 
     return match
+
+
+def _mentions(text: str, term: str) -> bool:
+    """Whole-word containment.
+
+    Naive substring matching let the one-letter hand shorthands ("l", "r") in
+    the value synonym table match almost any pair of names — "SARAH" and
+    "PERSON_2" both contain an "r" — merging unrelated entities. Short terms now
+    have to match the whole value; longer ones must land on a word boundary so
+    "glass" still matches "wine glass" without "ass" matching anything.
+    """
+    if len(term) < 3:
+        return text == term
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", text) is not None

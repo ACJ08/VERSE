@@ -41,7 +41,7 @@ The platform communicates the integration of **IBM watsonx** enterprise AI and *
 - Role-based production management workflows
 - Real-time continuity analysis and alerting
 
-This is a complete frontend application demonstrating the user interface, navigation flows, and dashboard experience. All backend data is mocked in `src/app/data/mockData.ts`.
+This is a complete frontend application demonstrating the user interface, navigation flows, and dashboard experience. It runs standalone against the mock content in `src/app/data/mockData.ts`, and renders live data from the VERSE backend when one is reachable — every page that reads production data prefers the API and falls back to its mock content, so the demo never breaks when the backend is offline. See [Data Layer](#data-layer).
 
 ---
 
@@ -197,7 +197,11 @@ VERSE/
         │   └── ui/               # shadcn/ui components (accordion, button, card, etc.)
         │
         ├── data/
-        │   └── mockData.ts       # All application mock data, types, and configurations
+        │   └── mockData.ts       # Design-time content and offline fallback data
+        │
+        ├── lib/
+        │   ├── api.ts            # Typed client for the VERSE backend — the only fetch() site
+        │   └── hooks.ts          # React hooks wrapping the client with loading/error state
         │
         └── imports/
             ├── VERSE_LOGO_2.png  # Primary VERSE brand logo
@@ -211,7 +215,8 @@ VERSE/
 | `src/app/pages/` | Full-page view components. Each file is a self-contained page. |
 | `src/app/components/ui/` | Reusable shadcn/ui primitives. Edit here to change component appearance globally. |
 | `src/app/components/figma/` | Utility components for asset handling. |
-| `src/app/data/` | All mock data, TypeScript types, and role/production configurations. |
+| `src/app/data/` | Mock data, TypeScript types, and role/production configurations. |
+| `src/app/lib/` | Backend client and data-fetching hooks. Add API calls here, never in a page. |
 | `src/styles/` | All styling — theme tokens, fonts, and Tailwind setup. |
 | `src/imports/` | Static assets (images, documents) imported directly by components. |
 
@@ -313,12 +318,13 @@ git commit -m "Remove node_modules from tracking"
 
 ## Environment Variables
 
-This frontend application does not currently require environment variables for local development. All data is served from `src/app/data/mockData.ts`.
+The app runs with no environment variables — it falls back to `src/app/data/mockData.ts` when no backend answers.
 
-When connecting to a real backend API, create a `.env.local` file in the project root:
+To render live data, run the backend (`cd continuity-engine && uvicorn main:app --port 8000`) and create a `.env.local` file in the project root:
 
 ```env
-# API base URL for the VERSE backend
+# API base URL for the VERSE backend (continuity-engine/main.py)
+# Local development: http://localhost:8000
 VITE_API_URL=https://api.your-verse-instance.com
 
 # IBM watsonx API endpoint (when integrating directly)
@@ -410,9 +416,61 @@ The `DashboardPage` component accepts a `userRole: UserRole` prop and uses it to
 2. Render the appropriate page content when a nav item is selected
 3. Display role-specific data, charts, and AI recommendations
 
+### API Client
+
+`src/app/lib/api.ts` is the only place the app talks to the backend. Base URL
+comes from `VITE_API_URL`; with no value set the calls fail fast and every page
+falls back to mock content.
+
+| Group | Calls |
+|---|---|
+| `auth` | register, login, email verification, password reset, me |
+| `projects` | list, get, create, update, delete, team, invite |
+| `upload` | `screenplay`, `footage`, `callSheet` |
+| `continuity` | `analyse`, `issues`, `scenes`, `entities`, `runPipeline`, `ingestAdapted`, `feedback`, `overrideFact` |
+
+`scenes` and `entities` are the two reads the production pages are built on:
+
+- **`continuity.scenes(projectId)`** → per-scene score, issue counts, entities,
+  whether the scene has been shot, and a one-line headline. Powers Scene
+  Tracking, Scene Timeline and Timeline Tracking.
+- **`continuity.entities(projectId, { entity_type, attribute })`** → per-entity
+  slots, each with the script's expectation, the footage observation, both
+  sources, and a `state` of `match` / `conflict` / `unverified` /
+  `observed_only`. Powers Costume Tracking, Prop Tracking, Continuity
+  Verification and Production Memory.
+
+A `conflict` slot with `flagged: false` means the values differ but the
+observation's confidence was too low for the engine to penalise the score —
+`slotStateLabel()` renders that as "Differs (low confidence)" rather than as an
+error.
+
+### Hooks
+
+`src/app/lib/hooks.ts` wraps the client with loading/error state:
+`useCurrentUser`, `useLogin`, `useRegister`, `useProjects`, `useProject`,
+`useProjectTeam`, `useCreateProject`, `useContinuityReport`,
+`useContinuityIssues`, `useSceneViews`, `useEntityViews`, `useFeedback`,
+`useScreenplayUpload`, `useFootageUpload`, `useBackendHealth`.
+
+### Ingesting production data
+
+Two upload paths, both in the dashboard:
+
+- **Screenplay** — *Script Supervisor → Screenplay Analysis*. Sends the file to
+  `POST /upload/screenplay`; the backend extracts scenes via the Script
+  Intelligence service, IBM Granite, or a regex parser, and the response says
+  which ran.
+- **Footage** — *Continuity Supervisor → Continuity Verification*. Sends the
+  vision pipeline's `scene_<id>.json` (or a video clip, when the backend has a
+  vision service) to `POST /upload/footage`, along with an **identity mapping**
+  (`PERSON_1=Sarah`) that joins anonymous vision track ids to script character
+  names. Without that mapping the footage cannot be compared to the screenplay,
+  and the response `warnings` say so.
+
 ### Mock Data
 
-`src/app/data/mockData.ts` is the single source of truth for all demo content:
+`src/app/data/mockData.ts` is the design-time content and the offline fallback:
 - `userRoles` — role definitions with features and responsibilities
 - `productionTypes` — production category options
 - `mockProductions` — sample production records
@@ -421,6 +479,9 @@ The `DashboardPage` component accepts a `userRole: UserRole` prop and uses it to
 - `aiRecommendations` — AI-generated continuity alerts
 - `teamMembers` — team roster data
 - `characters` — character tracking data
+
+Pages that can show either source render a small **Live · engine** / **Demo
+data** badge in their header, so it is always clear which one is on screen.
 
 ---
 
@@ -498,8 +559,8 @@ The output in `dist/` contains:
 
 ### Known Constraints
 
-- **No real backend.** All data in the dashboard is static mock data from `mockData.ts`. Connecting to a real API requires replacing mock imports with API calls and managing loading/error states.
-- **No real authentication.** The sign-in form accepts any email/password and uses `sessionStorage` for state persistence. A real implementation would require an auth provider (e.g., IBM AppID, Auth0, Firebase).
+- **Backend optional, and some pages are still mock-only.** Overview pages, Analytics, Team, Scheduling and the learning pages render mock content regardless of backend state; the production-data pages (Scene Tracking, Scene Timeline, Timeline Tracking, Costume/Prop Tracking, Continuity Verification, Continuity Tracking, Production Memory, Screenplay Analysis, Continuity Reports) use the API when it answers.
+- **Authentication is real but demo-seeded.** The backend seeds six demo accounts matching the one-click panel on the sign-in page; without a backend the form accepts anything and falls back to `sessionStorage`.
 - **Font loading depends on network.** Fonts are loaded from Google Fonts CDN. Offline use or restricted network environments may fall back to system fonts.
 - **Unsplash images require network.** Production thumbnail images in mock data are fetched from Unsplash CDN URLs.
 
@@ -524,7 +585,7 @@ The output in `dist/` contains:
 Based on the current implementation, the following enhancements would be the natural next steps:
 
 ### Backend Integration
-- Replace `mockData.ts` with real API calls to a VERSE backend service
+- Migrate the remaining mock-only pages (Overview dashboards, Analytics, Team, Scheduling) onto the API
 - Implement genuine IBM watsonx API integration for live AI recommendations
 - Connect IBM Granite models for real-time semantic analysis of screenplay content
 

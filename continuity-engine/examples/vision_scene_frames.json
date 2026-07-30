@@ -1,0 +1,246 @@
+{
+  "_source": "Trimmed from vision_pipeline/scene_001.json (real pipeline output, 55 frames -> 8). Keeps the per-frame costume flicker and hand-association changes that the vision adapter has to aggregate away.",
+  "scene_id": "SCENE_001",
+  "frames_analysed": 8,
+  "observations": [
+    {
+      "frame_id": 0,
+      "timestamp": "00:00:00.000",
+      "characters": [],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "none",
+          "state": null,
+          "owner": null
+        }
+      ],
+      "detections": [
+        {
+          "type": "prop",
+          "name": "wine glass",
+          "confidence": 0.94
+        }
+      ]
+    },
+    {
+      "frame_id": 1,
+      "timestamp": "00:00:00.480",
+      "characters": [
+        {
+          "name": "PERSON_1",
+          "costume": "black",
+          "position": "left",
+          "movement": null,
+          "emotional_state": null
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "left",
+          "state": null,
+          "owner": null
+        }
+      ],
+      "detections": [
+        {
+          "type": "character",
+          "name": "PERSON_1",
+          "confidence": 0.509
+        },
+        {
+          "type": "prop",
+          "name": "wine glass",
+          "confidence": 0.925
+        }
+      ]
+    },
+    {
+      "frame_id": 2,
+      "timestamp": "00:00:00.960",
+      "characters": [
+        {
+          "name": "PERSON_1",
+          "costume": "black",
+          "position": "left",
+          "movement": "stationary",
+          "emotional_state": null
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "left",
+          "state": null,
+          "owner": null
+        }
+      ],
+      "detections": [
+        {
+          "type": "character",
+          "name": "PERSON_1",
+          "confidence": 0.556
+        },
+        {
+          "type": "prop",
+          "name": "wine glass",
+          "confidence": 0.937
+        }
+      ]
+    },
+    {
+      "frame_id": 3,
+      "timestamp": "00:00:01.440",
+      "characters": [
+        {
+          "name": "PERSON_1",
+          "costume": "pink",
+          "position": "left",
+          "movement": "moving",
+          "emotional_state": null
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "right",
+          "state": null,
+          "owner": null
+        }
+      ],
+      "detections": [
+        {
+          "type": "character",
+          "name": "PERSON_1",
+          "confidence": 0.648
+        },
+        {
+          "type": "prop",
+          "name": "wine glass",
+          "confidence": 0.867
+        }
+      ]
+    },
+    {
+      "frame_id": 4,
+      "timestamp": "00:00:01.920",
+      "characters": [
+        {
+          "name": "PERSON_1",
+          "costume": "pink",
+          "position": "center",
+          "movement": "moving",
+          "emotional_state": null
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "right",
+          "state": null,
+          "owner": null
+        }
+      ],
+      "detections": [
+        {
+          "type": "character",
+          "name": "PERSON_1",
+          "confidence": 0.766
+        },
+        {
+          "type": "prop",
+          "name": "wine glass",
+          "confidence": 0.893
+        }
+      ]
+    },
+    {
+      "frame_id": 5,
+      "timestamp": "00:00:02.400",
+      "characters": [
+        {
+          "name": "PERSON_1",
+          "costume": "gray",
+          "position": "center",
+          "movement": "moving",
+          "emotional_state": null
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "right",
+          "state": null,
+          "owner": null
+        }
+      ],
+      "detections": [
+        {
+          "type": "character",
+          "name": "PERSON_1",
+          "confidence": 0.793
+        },
+        {
+          "type": "prop",
+          "name": "wine glass",
+          "confidence": 0.692
+        }
+      ]
+    },
+    {
+      "frame_id": 6,
+      "timestamp": "00:00:02.880",
+      "characters": [
+        {
+          "name": "PERSON_1",
+          "costume": "dark green",
+          "position": "center",
+          "movement": "moving",
+          "emotional_state": null
+        }
+      ],
+      "props": [],
+      "detections": [
+        {
+          "type": "character",
+          "name": "PERSON_1",
+          "confidence": 0.834
+        }
+      ]
+    },
+    {
+      "frame_id": 54,
+      "timestamp": "00:00:25.920",
+      "characters": [
+        {
+          "name": "PERSON_3",
+          "costume": "black",
+          "position": "left",
+          "movement": "stationary",
+          "emotional_state": null
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "none",
+          "state": null,
+          "owner": null
+        }
+      ],
+      "detections": [
+        {
+          "type": "character",
+          "name": "PERSON_3",
+          "confidence": 0.592
+        },
+        {
+          "type": "prop",
+          "name": "wine glass",
+          "confidence": 0.938
+        }
+      ]
+    }
+  ]
+}

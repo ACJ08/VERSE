@@ -11,18 +11,31 @@ charge of every decision.
 ```bash
 cd continuity-engine
 pip install -r requirements.txt
-python -m pytest                # 47 tests
-python examples/run_demo.py     # end-to-end demo
+python -m pytest                        # 133 tests
+python examples/run_demo.py             # engine-contract demo
+python examples/run_pipeline_demo.py    # full pipeline: team 1 + team 2 payloads -> report
 ```
+
+`run_pipeline_demo.py` is the one to look at first: it takes the real payload
+shapes the script and vision pipelines emit, adapts them, ingests them, and
+prints the report plus the two views the dashboard renders. No credentials and no
+running services needed.
 
 ## Use it
 
 ```python
+from app.adapters import adapt_script_intelligence, adapt_vision
 from app.engine import ContinuityEngine
 
 engine = ContinuityEngine()
-engine.ingest_script(script_json)      # team 1
-engine.ingest_footage(footage_json)    # team 2
+
+# Producing teams' own shapes — the adapters land their fields on the attributes
+# the rules compare, and aggregate vision's per-frame output per scene.
+engine.ingest_script(adapt_script_intelligence(script_service_response).payload)
+engine.ingest_footage(
+    adapt_vision(vision_scene_document, entity_aliases={"PERSON_1": "Sarah"}).payload
+)
+
 report = engine.analyse("SCENE_012")
 
 print(report.overall_score)            # 91.3
@@ -85,16 +98,18 @@ app/
 ├── engine.py         facade — start here
 ├── models/           shared contracts
 ├── config/           all tunables
+├── adapters/         producing-team payloads -> engine payloads
 ├── ingestion/        JSON -> facts
 ├── graph/            timeline, memory, storage
 ├── reasoning/        rules, assumptions, detection
 ├── scoring/          category + overall scores
-├── reporting/        explanations, suggested fixes
+├── reporting/        explanations, suggested fixes, dashboard views
 ├── feedback/         human-in-the-loop
-└── api/              FastAPI router
+├── services/         watsonx + upstream service clients
+└── api/              FastAPI routers (continuity, upload, auth, projects)
 docs/                 CONTEXT · PROGRESS · INTEGRATION
-examples/             mock data + demo
-tests/                47 tests
+examples/             fixtures in every producer's shape + two demos
+tests/                133 tests
 ```
 
 ## Docs

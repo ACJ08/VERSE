@@ -1,0 +1,116 @@
+{
+  "_source": "Team 1 (script-intelligence) POST /api/v1/analyse-script response shape — AnalyseScriptResponse with SceneContinuity scenes. Adapted to the engine's contract by app/adapters/script_intelligence.py.",
+  "filename": "coffee_shop.pdf",
+  "scene_count": 3,
+  "scenes": [
+    {
+      "metadata": {
+        "scene_id": "SCENE_001",
+        "heading": "INT. COFFEE SHOP - DAY",
+        "interior_exterior": "INT.",
+        "location": "COFFEE SHOP",
+        "sub_location": "WINDOW TABLE",
+        "time": "DAY"
+      },
+      "characters": [
+        {
+          "name": "SARAH",
+          "costume": "black dress",
+          "position": "seated frame left by the window",
+          "movement": "remains seated",
+          "emotional_state": "tense"
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "right",
+          "state": "full",
+          "owner": "SARAH"
+        }
+      ],
+      "lighting": {
+        "description": "warm afternoon light",
+        "source": "window",
+        "mood": "calm",
+        "time_of_day": "DAY"
+      },
+      "continuity_notes": [
+        {
+          "note": "Glass level must match the following scene.",
+          "severity": "MEDIUM",
+          "category": "PROP",
+          "affected_characters": ["SARAH"]
+        }
+      ],
+      "confidence_score": 0.95,
+      "action": "SARAH sits at the window table, a wine glass in her right hand. She watches the street."
+    },
+    {
+      "metadata": {
+        "scene_id": "SCENE_002",
+        "heading": "INT. COFFEE SHOP - CONTINUOUS",
+        "interior_exterior": "INT.",
+        "location": "COFFEE SHOP",
+        "time": "DAY"
+      },
+      "characters": [
+        {
+          "name": "SARAH",
+          "costume": "black dress",
+          "position": "frame left",
+          "movement": "rises and crosses to the counter",
+          "emotional_state": "urgent"
+        },
+        {
+          "name": "MARCUS",
+          "costume": "grey coat",
+          "position": "frame right",
+          "movement": "stands still"
+        }
+      ],
+      "props": [
+        {
+          "name": "wine glass",
+          "hand_usage": "right",
+          "state": "half empty",
+          "owner": "SARAH"
+        }
+      ],
+      "lighting": {
+        "description": "warm afternoon light",
+        "time_of_day": "DAY"
+      },
+      "continuity_notes": [],
+      "confidence_score": 1.0,
+      "action": "MARCUS enters. The crowd panics and rushes through the shop as SARAH crosses to the counter."
+    },
+    {
+      "metadata": {
+        "scene_id": "SCENE_003",
+        "heading": "EXT. STREET - NIGHT",
+        "interior_exterior": "EXT.",
+        "location": "STREET",
+        "time": "NIGHT"
+      },
+      "characters": [
+        {
+          "name": "SARAH",
+          "costume": "grey shirt",
+          "position": "frame right",
+          "movement": "walks away from camera"
+        }
+      ],
+      "props": [],
+      "lighting": {
+        "description": "sodium street lamps",
+        "mood": "cold",
+        "time_of_day": "NIGHT"
+      },
+      "continuity_notes": [],
+      "confidence_score": 1.0,
+      "action": "SARAH removes her black dress jacket and steps out onto the street. A storm breaks overhead."
+    }
+  ],
+  "errors": []
+}
