@@ -297,3 +297,41 @@ def reset_password(req: ResetPasswordRequest):
 @router.get("/me")
 def me(current_user: Annotated[dict, Depends(get_current_user)]):
     return {k: v for k, v in current_user.items() if k != "hashed_pw"}
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    organization: str | None = None
+
+
+@router.patch("/me")
+def update_me(
+    req: UpdateProfileRequest,
+    current_user: Annotated[dict, Depends(get_current_user)],
+):
+    """Update the authenticated user's editable profile fields (name, role)."""
+    updates: dict[str, object] = {}
+    if req.name is not None:
+        updates["name"] = req.name.strip()
+    if req.role is not None:
+        # Validate against the known role IDs used by the frontend
+        _VALID_ROLES = {
+            "producer", "director", "script-supervisor", "continuity-supervisor",
+            "production-manager", "department-member", "film-student",
+        }
+        if req.role not in _VALID_ROLES:
+            raise HTTPException(400, f"Unknown role '{req.role}'.")
+        updates["role"] = req.role
+    if not updates:
+        raise HTTPException(400, "No fields to update.")
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    conn = db()
+    with closing(conn.cursor()) as cur:
+        cur.execute(
+            f"UPDATE users SET {set_clause} WHERE id = ?",
+            [*updates.values(), current_user["id"]],
+        )
+        conn.commit()
+        row = dict(cur.execute("SELECT * FROM users WHERE id = ?", (current_user["id"],)).fetchone())
+    return {k: v for k, v in row.items() if k != "hashed_pw"}

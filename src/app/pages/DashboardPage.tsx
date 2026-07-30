@@ -1150,15 +1150,41 @@ function ProducerContinuityReports({ projectId }: { projectId?: string }) {
   const [filter, setFilter] = useState("All");
   const [isRunning, setIsRunning] = useState(false);
   const [liveReport, setLiveReport] = useState<{ score: number; issueCount: number } | null>(null);
+  // Live report entries derived from GET /continuity/issues/{project_id}
+  const [liveReportRows, setLiveReportRows] = React.useState<typeof reports | null>(null);
+
   const sev = { critical: { c: "var(--verse-red)", bg: "#FEF2F2", l: "Critical" }, warning: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)", l: "Warning" }, info: { c: "#0F62FE", bg: "#EFF6FF", l: "Info" } };
-  const filtered = reports.filter((r) => filter === "All" || r.severity === filter.toLowerCase());
+
+  // Use live rows when available; otherwise fall back to the static mock array
+  const baseReports = liveReportRows ?? reports;
+  const filtered = baseReports.filter((r) => filter === "All" || r.severity === filter.toLowerCase());
+
+  // Fetch existing issues from the engine on mount (non-blocking)
+  React.useEffect(() => {
+    if (!projectId) return;
+    import("@/app/lib/api").then(({ continuity, toDisplaySeverity }) => {
+      continuity.issues(projectId).then((issues) => {
+        if (!issues.length) return;
+        const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        setLiveReportRows(
+          issues.slice(0, 10).map((issue, i) => ({
+            id: issue.issue_id,
+            title: issue.explanation || issue.attribute || `Issue #${i + 1}`,
+            date: now,
+            severity: toDisplaySeverity(issue.severity),
+            scenes: issue.related_scene_ids?.length ?? 1,
+            issues: 1,
+            score: Math.round(100 - (issue.score_impact ?? 0) * 100),
+          }))
+        );
+      }).catch(() => {}); // backend offline — keep mock
+    });
+  }, [projectId]);
 
   const handleRunAnalysis = async () => {
     if (isRunning) return;
     setIsRunning(true);
-    try {
-      const report = await apiContinuity.analyse(projectId ?? "VERSE_DEMO");
-      setLiveReport({ score: Math.round(report.overall_score), issueCount: report.issues.length });
+        setLiveReportRows(
       toast.success(`Analysis complete — score ${Math.round(report.overall_score)}%, ${report.issues.length} issue(s) found.`);
     } catch {
       toast.promise(new Promise<void>((resolve) => setTimeout(resolve, 1200)), { loading: "Running AI analysis…", success: "Analysis complete. Report generated.", error: "Analysis failed." });

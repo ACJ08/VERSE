@@ -293,6 +293,10 @@ export const auth = {
     }),
 
   me: () => apiFetch<VERSEUser>("/auth/me"),
+
+  /** Update the authenticated user's profile (name, role). */
+  updateProfile: (data: { name?: string; role?: string }) =>
+    apiFetch<VERSEUser>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
 };
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -447,6 +451,131 @@ export const upload = {
 
 export const system = {
   health: () => apiFetch<{ status: string; version: string; watsonx_connected: boolean }>("/health"),
+};
+
+// ─── Script Intelligence ──────────────────────────────────────────────────────
+// Points at the script-intelligence FastAPI service (VITE_SCRIPT_API_URL in .env.local).
+// Falls back to same-origin (empty string) when unset.
+
+const SCRIPT_BASE = (import.meta.env.VITE_SCRIPT_API_URL as string) ?? "";
+
+export interface SceneAnalysis {
+  metadata: {
+    scene_id: string;
+    heading: string | null;
+    location: string | null;
+    time: string | null;
+    interior_exterior: string | null;
+  };
+  characters: Array<{
+    name: string;
+    costume: string | null;
+    position: string | null;
+    movement: string | null;
+    emotional_state: string | null;
+  }>;
+  props: Array<{
+    name: string;
+    hand_usage: string | null;
+    state: string | null;
+    owner: string | null;
+  }>;
+  lighting: {
+    description: string | null;
+    source: string | null;
+    mood: string | null;
+    time_of_day: string | null;
+  } | null;
+  continuity_notes: Array<{
+    note: string;
+    severity: string | null;
+    category: string | null;
+    affected_characters: string[] | null;
+  }>;
+  confidence_score: number | null;
+}
+
+export interface AnalyseScriptResult {
+  filename: string;
+  scene_count: number;
+  scenes: SceneAnalysis[];
+  errors: string[];
+}
+
+export interface AnalyseAndIngestResult extends AnalyseScriptResult {
+  engine_response?: { facts_ingested: number; stats: Record<string, number> } | null;
+}
+
+async function scriptApiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
+  const { params, ...init } = opts;
+  let url = `${SCRIPT_BASE}${path}`;
+  if (params) {
+    const qs = new URLSearchParams(params).toString();
+    if (qs) url += `?${qs}`;
+  }
+  const token = TokenStore.get();
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> ?? {}),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Do NOT set Content-Type for FormData — browser sets it with boundary.
+
+  const res = await fetch(url, { ...init, headers });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      msg = body?.detail ?? body?.message ?? msg;
+    } catch { /* ignore */ }
+    throw new APIError(res.status, msg);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export const scriptIntelligence = {
+  /** Upload a screenplay for scene parsing only (no AI analysis). */
+  parseScript: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return scriptApiFetch<{ filename: string; scene_count: number; extracted_text_path: string }>("/api/v1/parse-script", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  /** Run full Granite AI continuity analysis on a screenplay. */
+  analyseScript: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return scriptApiFetch<AnalyseScriptResult>("/api/v1/analyse-script", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  /** Analyse screenplay AND automatically forward to the continuity engine. */
+  analyseAndIngest: (file: File, projectId: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("project_id", projectId);
+    return scriptApiFetch<AnalyseScriptResult>("/api/v1/analyse-and-ingest", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  /** Analyse a single scene text string using the local Granite model. */
+  analyseScene: (sceneText: string, sceneId?: string) =>
+    scriptApiFetch<SceneAnalysis>("/api/v1/analyse-scene", {
+      method: "POST",
+      body: JSON.stringify({ scene_text: sceneText, scene_id: sceneId ?? "SCENE_001" }),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  /** Health check for the script-intelligence service. */
+  health: () =>
+    scriptApiFetch<{ status: string; version: string; granite_configured: boolean }>("/api/v1/health"),
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

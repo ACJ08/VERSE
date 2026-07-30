@@ -189,7 +189,64 @@ def parse_args() -> argparse.Namespace:
         "--debug-frame-id", type=int, default=None,
         help="Specific frame_id to save as the debug frame (defaults to the frame with the most detections)",
     )
+    # ── Continuity-engine integration ─────────────────────────────────────────
+    parser.add_argument(
+        "--ingest-url",
+        default=None,
+        help=(
+            "Base URL of the VERSE continuity-engine (e.g. http://localhost:8000). "
+            "When provided, the pipeline POSTs the scene observations to "
+            "POST <url>/continuity/ingest/footage after writing the local JSON file. "
+            "Use --project-id to specify the target project (default: VERSE_DEMO)."
+        ),
+    )
+    parser.add_argument(
+        "--project-id",
+        default="VERSE_DEMO",
+        help="Continuity-engine project ID used when --ingest-url is set.",
+    )
+    parser.add_argument(
+        "--ingest-token",
+        default=None,
+        help="Optional Bearer token for the continuity-engine auth header.",
+    )
     return parser.parse_args()
+
+
+def _push_to_engine(
+    scene_doc: dict,
+    project_id: str,
+    ingest_url: str,
+    token: str | None = None,
+) -> None:
+    """POST footage observations to the continuity engine.
+
+    Failures are printed as warnings and never abort the pipeline.
+    """
+    import urllib.request
+    import urllib.error
+
+    endpoint = ingest_url.rstrip("/") + "/continuity/ingest/footage"
+    body = json.dumps({
+        "project_id": project_id,
+        "payload": scene_doc,
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+            print(
+                f"Continuity engine ingested {data.get('facts_ingested', '?')} facts "
+                f"for project '{project_id}' → {endpoint}"
+            )
+    except urllib.error.HTTPError as e:
+        print(f"Warning: continuity engine returned HTTP {e.code}: {e.reason}", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: failed to push to continuity engine at {endpoint}: {e}", file=sys.stderr)
 
 
 def main() -> None:
@@ -225,6 +282,15 @@ def main() -> None:
     print(f"Wrote {out_path}")
 
     save_debug_frame(frames, raw_by_frame, hand_debug_by_frame, args.debug_out, frame_id=args.debug_frame_id)
+
+    # ── Forward to continuity engine (optional) ────────────────────────────────
+    if args.ingest_url:
+        _push_to_engine(
+            scene_doc,
+            project_id=args.project_id,
+            ingest_url=args.ingest_url,
+            token=args.ingest_token,
+        )
 
 
 if __name__ == "__main__":
