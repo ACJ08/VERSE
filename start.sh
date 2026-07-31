@@ -127,6 +127,41 @@ export VISION_SERVICE_URL="${VISION_SERVICE_URL:-http://localhost:8200}"
 export CONTINUITY_ENGINE_URL="${CONTINUITY_ENGINE_URL:-http://localhost:8000}"
 
 # =============================================================================
+# 0. Granite LLM server  (port 11435)  — llama-cpp-python, CPU-only
+#    Serves the local IBM Granite model to the Script Intelligence service.
+#    Skipped automatically if the model file is absent.
+# =============================================================================
+_GRANITE_MODEL="${GRANITE_MODEL_PATH:-$HOME/.cache/verse/models/granite-3.3-2b-Q4_K_M.gguf}"
+_GRANITE_VENV="$ROOT/script-intelligence/.venv"
+
+if [[ -f "$_GRANITE_MODEL" ]] && [[ -d "$_GRANITE_VENV" ]]; then
+  # Kill anything already holding port 11435
+  lsof -ti :11435 | xargs kill 2>/dev/null; sleep 1
+
+  log "Starting ${BOLD}Granite LLM server${NC} on port 11435 (CPU-only, model: $(basename "$_GRANITE_MODEL"))…"
+  (
+    "$_GRANITE_VENV/bin/python" -m llama_cpp.server \
+      --model "$_GRANITE_MODEL" \
+      --host 127.0.0.1 \
+      --port 11435 \
+      --n_ctx 2048 \
+      --n_threads 4 \
+      --verbose false 2>&1 | while IFS= read -r line; do
+        echo -e "\033[0;35m[GRANITE]\033[0m $line"
+    done
+  ) &
+  PIDS+=($!)
+  ok "Granite LLM server started on ${BOLD}http://localhost:11435/v1${NC}  (PID ${PIDS[-1]})"
+  # Allow model to load before the script-intelligence service requests it
+  sleep 5
+else
+  if [[ ! -f "$_GRANITE_MODEL" ]]; then
+    warn "Granite model not found at $_GRANITE_MODEL — script-intelligence will use heuristic fallback."
+    warn "To enable AI analysis: run './setup-granite.sh' or set GRANITE_MODEL_PATH."
+  fi
+fi
+
+# =============================================================================
 # 1. Continuity Engine  (port 8000)  — always started
 # =============================================================================
 log "Starting ${BOLD}Continuity Engine${NC} on port 8000…"
@@ -197,6 +232,8 @@ echo -e "  ${BLUE}Engine     ${NC}→  http://localhost:8000/docs"
   echo -e "  ${GREEN}Script API ${NC}→  http://localhost:8100/docs"
 [[ "$RUN_VISION" == true ]] && \
   echo -e "  ${YELLOW}Vision API ${NC}→  http://localhost:8200/docs"
+[[ -f "$_GRANITE_MODEL" ]] && \
+  echo -e "  \033[0;35mGranite LLM${NC}→  http://localhost:11435/v1/models"
 echo ""
 echo -e "  Press ${BOLD}Ctrl+C${NC} to stop all services."
 echo ""
