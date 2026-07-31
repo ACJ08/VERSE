@@ -136,7 +136,7 @@ _GRANITE_VENV="$ROOT/script-intelligence/.venv"
 
 if [[ -f "$_GRANITE_MODEL" ]] && [[ -d "$_GRANITE_VENV" ]]; then
   # Kill anything already holding port 11435
-  lsof -ti :11435 | xargs kill 2>/dev/null; sleep 1
+  lsof -ti :11435 | xargs -r kill 2>/dev/null; sleep 1
 
   log "Starting ${BOLD}Granite LLM server${NC} on port 11435 (CPU-only, model: $(basename "$_GRANITE_MODEL"))…"
   (
