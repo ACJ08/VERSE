@@ -162,11 +162,12 @@ export function SignInPage({
     }
   };
 
-  // Google OAuth — redirects to backend Google OAuth endpoint
+  // Google OAuth — full-page redirect to backend Google OAuth endpoint.
+  // Uses VITE_API_URL when set; falls back to the default backend port (8000)
+  // because Vite's dev-proxy only handles fetch/XHR, not browser navigations.
   const handleGoogleSignIn = () => {
-    const apiBase = import.meta.env.VITE_API_URL || "";
-    const googleOAuthUrl = `${apiBase}/auth/google`;
-    window.location.href = googleOAuthUrl;
+    const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    window.location.href = `${apiBase}/auth/google`;
   };
 
   return (
