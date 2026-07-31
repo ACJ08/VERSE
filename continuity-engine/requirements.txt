@@ -1,21 +1,37 @@
-pydantic>=2.6,<3
-networkx>=3.2,<4
-fastapi>=0.110,<1
-uvicorn[standard]>=0.27,<1
-python-multipart>=0.0.9,<1
-python-jose[cryptography]>=3.3,<4
-bcrypt>=4.0,<6
-pypdf>=4.0,<6             # PDF text extraction in upload.py (replaces pymupdf)
-python-dotenv>=1.0,<2     # Load .env into os.environ on startup
+# VERSE Continuity Engine — Python Dependencies
+# Install with: pip install -r requirements.txt
+#
+# The engine degrades gracefully when optional packages are absent — every
+# feature that requires an optional dependency falls back to a rule-based path.
 
-# optional – IBM watsonx (install separately when credentials are available)
+# ─── Core runtime ─────────────────────────────────────────────────────────────
+pydantic>=2.6,<3          # Data validation for all API request/response models
+networkx>=3.2,<4          # Knowledge graph — nodes are entities, edges are facts
+fastapi>=0.110,<1         # ASGI web framework; all routers are registered in main.py
+uvicorn[standard]>=0.27,<1 # ASGI server; [standard] adds uvloop + httptools for speed
+python-multipart>=0.0.9,<1 # Required by FastAPI to parse multipart/form-data (file uploads)
+python-jose[cryptography]>=3.3,<4  # JWT encode/decode; [cryptography] backend for HS256
+bcrypt>=4.0,<6            # Password hashing — used directly (passlib dropped; see security.py)
+pypdf>=4.0,<6             # PDF text extraction in upload.py (replaces the old pymupdf/fitz)
+python-dotenv>=1.0,<2     # Loads continuity-engine/.env into os.environ at startup (main.py)
+
+# ─── Optional: IBM watsonx / Granite ──────────────────────────────────────────
+# Install when IBM Cloud credentials are available to enable:
+#   - Granite-based screenplay scene extraction     (upload.py → _granite_extract)
+#   - LLM assumption trigger classification         (reasoning/assumptions.py)
+#   - Natural-language continuity explanations      (reporting/explanations.py)
+#   - Natural-language fix suggestions              (reporting/suggestions.py)
+#   - Granite embedding semantic entity matching    (services/watsonx.py)
+# Without this package all five features silently use rule-based fallbacks.
 # ibm-watsonx-ai>=1.0
 
-# optional – LangChain LLM adapter (provider-agnostic; install the pieces you use).
-# VERSE_LLM_MODEL="anthropic:claude-sonnet-5" selects the provider at runtime.
+# ─── Optional: LangChain provider-agnostic LLM adapter ────────────────────────
+# Allows using any LLM (Anthropic, OpenAI, IBM, etc.) via VERSE_LLM_MODEL env var.
+# Format: "provider:model-name", e.g. VERSE_LLM_MODEL="anthropic:claude-sonnet-5"
+# See services/langchain_adapter.py for supported providers.
 # langchain>=0.3
 # langchain-anthropic>=0.3   # or langchain-ibm / langchain-openai / ...
 
-# dev
-pytest>=8.0
-httpx>=0.27
+# ─── Development / testing ────────────────────────────────────────────────────
+pytest>=8.0   # Test runner — run with: cd continuity-engine && pytest
+httpx>=0.27   # Async HTTP client used by FastAPI's TestClient in the test suite

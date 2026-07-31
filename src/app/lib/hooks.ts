@@ -29,6 +29,14 @@ import {
   APIError,
 } from "./api";
 
+// ─── Generic async state ──────────────────────────────────────────────────────
+
+interface AsyncState<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+}
+
 function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncState<T> & { refetch: () => void } {
   const [state, setState] = useState<AsyncState<T>>({ data: null, loading: true, error: null });
   const mounted = useRef(true);

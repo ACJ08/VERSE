@@ -1184,7 +1184,21 @@ function ProducerContinuityReports({ projectId }: { projectId?: string }) {
   const handleRunAnalysis = async () => {
     if (isRunning) return;
     setIsRunning(true);
-        setLiveReportRows(
+    try {
+      const report = await apiContinuity.analyse(projectId ?? "VERSE_DEMO");
+      setLiveReport({ score: Math.round(report.overall_score), issueCount: report.issues.length });
+      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      setLiveReportRows(
+        report.issues.slice(0, 10).map((issue, i) => ({
+          id: issue.issue_id,
+          title: issue.explanation || issue.attribute || `Issue #${i + 1}`,
+          date: now,
+          severity: toDisplaySeverity(issue.severity),
+          scenes: issue.related_scene_ids?.length ?? 1,
+          issues: 1,
+          score: Math.round(100 - (issue.score_impact ?? 0) * 100),
+        }))
+      );
       toast.success(`Analysis complete — score ${Math.round(report.overall_score)}%, ${report.issues.length} issue(s) found.`);
     } catch {
       toast.promise(new Promise<void>((resolve) => setTimeout(resolve, 1200)), { loading: "Running AI analysis…", success: "Analysis complete. Report generated.", error: "Analysis failed." });
@@ -1917,17 +1931,35 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
 }
 
 function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
-  // ── upload + live state ────────────────────────────────────────────────
+  // ── upload state ───────────────────────────────────────────────────────
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{ scenes_detected: number; facts_ingested: number; filename: string } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{
+    scenes_detected: number; facts_ingested: number; filename: string;
+  } | null>(null);
   const [analysing, setAnalysing] = useState(false);
-  const [liveScenes, setLiveScenes] = useState<Array<{ num: string; entities: string[]; aiScore: number }>>([]);
 
-  // Fallback demo scenes shown before any upload
+  // ── live scene data from the engine after upload ───────────────────────
+  // Each entry is built directly from SceneView returned by GET /continuity/scenes.
+  // Entity names come from scene.entities[], score from scene.score,
+  // scene label from scene.slugline or scene.scene_id.
+  const [liveScenes, setLiveScenes] = useState<Array<{
+    num: string;           // scene label, e.g. "INT. OFFICE - DAY"
+    entities: string[];    // character / prop / location names from the engine
+    aiScore: number;       // 0–100 continuity score from the engine
+    hasConflict: boolean;  // true when the scene has at least one issue
+  }>>([]);
+
+  // ── live summary stats from the engine ────────────────────────────────
+  const [liveStats, setLiveStats] = useState<{
+    entityCount: number;   // total unique entities across all scenes
+    avgScore: number;      // average per-scene continuity score (0–100)
+  } | null>(null);
+
+  // ── fallback demo scenes — shown only before the first upload ─────────
   const demoScenes = [
-    { num: "Scene 17", entities: ["Elena Chen", "Marcus Reyes", "Office Interior", "Coffee Mug", "Monday Evening"], aiScore: 100 },
-    { num: "Scene 18", entities: ["Elena Chen", "Dr. Park", "Office Interior", "Tuesday Morning (⚠)"], aiScore: 72 },
-    { num: "Scene 23", entities: ["Elena Chen", "Navy Jacket (⚠)", "Diner Interior", "Evening"], aiScore: 81 },
+    { num: "Scene 17", entities: ["Elena Chen", "Marcus Reyes", "Office Interior", "Coffee Mug", "Monday Evening"], aiScore: 100, hasConflict: false },
+    { num: "Scene 18", entities: ["Elena Chen", "Dr. Park", "Office Interior", "Tuesday Morning"], aiScore: 72, hasConflict: true },
+    { num: "Scene 23", entities: ["Elena Chen", "Navy Jacket", "Diner Interior", "Evening"], aiScore: 81, hasConflict: true },
   ];
 
   const handleUpload = async (file: File) => {
@@ -1935,35 +1967,56 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
     const pid = projectId ?? "VERSE_DEMO";
     setUploading(true);
     try {
+      // Step 1 — ingest the screenplay into the knowledge graph
       const result = await apiUpload.screenplay(pid, file);
       setUploadResult(result);
       toast.success(`"${result.filename}" ingested — ${result.scenes_detected} scenes, ${result.facts_ingested} facts extracted.`);
 
-      // Step 2 — automatically run analysis after upload
+      // Step 2 — fetch the per-scene rollup from the engine.
+      // GET /continuity/scenes returns SceneView[] with real entity names,
+      // per-scene scores, and issue counts — the source of truth after ingest.
       setAnalysing(true);
       try {
-        const report = await apiContinuity.analyse(pid);
-        const sev = (s: string) => s === "critical" ? 40 : s === "high" ? 65 : s === "medium" ? 80 : 95;
-        const grouped: Record<string, string[]> = {};
-        for (const issue of report.issues) {
-          const scene = issue.scene_id ?? "General";
-          grouped[scene] = grouped[scene] ?? [];
-          grouped[scene].push(issue.explanation || issue.attribute);
-        }
+        const scenesData = await apiContinuity.scenes(pid, /* analyse= */ true);
+        const views: SceneView[] = scenesData.scenes ?? [];
+
+        // Map SceneView → display row:
+        //   label   = slugline when available, else the raw scene_id
+        //   entities = character + prop + location names from the engine
+        //   aiScore  = engine score (0–100), clamped so 0 shows as 0 not "—"
+        //   hasConflict = at least one issue in this scene
         setLiveScenes(
-          Object.entries(grouped).slice(0, 8).map(([num, ents], i) => ({
-            num,
-            entities: ents.slice(0, 6),
-            aiScore: sev(report.issues.find((x) => x.scene_id === num)?.severity ?? "low"),
+          views.map((sv) => ({
+            num: sv.slugline ?? sv.scene_id,
+            entities: sv.entities.map((e) => e.name),
+            aiScore: Math.round(sv.score),
+            hasConflict: (sv.issue_count ?? 0) > 0,
           }))
         );
-      } catch { /* analysis optional */ } finally { setAnalysing(false); }
+
+        // Derive summary stats from the overview the endpoint returns
+        const ov = scenesData.overview;
+        setLiveStats({
+          entityCount: ov?.entities ?? views.reduce((n, sv) => n + sv.entities.length, 0),
+          avgScore: ov?.average_scene_score != null
+            ? Math.round(ov.average_scene_score)
+            : views.length > 0
+              ? Math.round(views.reduce((n, sv) => n + sv.score, 0) / views.length)
+              : 0,
+        });
+      } catch { /* scenes fetch optional — stat cards fall back to upload result */ }
+      finally { setAnalysing(false); }
     } catch (e) {
-      const isAuthError = e instanceof Error && (e.message.includes("401") || e.message.toLowerCase().includes("not authenticated") || e.message.toLowerCase().includes("sign in"));
-      const msg = isAuthError
-        ? "You must be signed in to upload a screenplay. Please sign out and sign in again."
-        : (e instanceof Error ? e.message : "Upload failed.");
-      toast.error(msg);
+      const isAuthError = e instanceof Error && (
+        e.message.includes("401") ||
+        e.message.toLowerCase().includes("not authenticated") ||
+        e.message.toLowerCase().includes("sign in")
+      );
+      toast.error(
+        isAuthError
+          ? "You must be signed in to upload a screenplay. Please sign out and sign in again."
+          : (e instanceof Error ? e.message : "Upload failed.")
+      );
     } finally {
       setUploading(false);
     }
@@ -1977,14 +2030,20 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
     input.click();
   };
 
-  const displayScenes = liveScenes.length > 0 ? liveScenes : demoScenes;
-  const totalScenes = uploadResult?.scenes_detected ?? 47;
-  const totalFacts  = uploadResult?.facts_ingested  ?? 0;
+  // Show live scenes after upload; fall back to demo cards before first upload
+  const isLive = liveScenes.length > 0;
+  const displayScenes = isLive ? liveScenes : demoScenes;
+
+  // Stat values: prefer live engine data, then upload result, then placeholder
+  const totalScenes = uploadResult?.scenes_detected ?? "—";
+  const totalFacts  = uploadResult?.facts_ingested  ?? "—";
+  const entityCount = liveStats?.entityCount ?? (isLive ? liveScenes.reduce((n, s) => n + s.entities.length, 0) : "—");
+  const avgScore    = liveStats?.avgScore    != null ? `${liveStats.avgScore}%` : "—";
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Screenplay Analysis"
+        title={<span className="inline-flex items-center gap-2">Screenplay Analysis <DataSourceBadge live={isLive} /></span>}
         subtitle="Upload your screenplay — VERSE extracts scenes, characters, props, and timelines automatically."
         actions={
           <Btn variant="primary" icon={Upload} onClick={openFilePicker}>
@@ -1993,7 +2052,7 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
         }
       />
 
-      {/* Upload progress / result banner */}
+      {/* Upload / analysis progress banner */}
       {(uploading || analysing) && (
         <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(124,58,237,0.25)", background: "var(--verse-violet-light)" }}>
           <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
@@ -2003,6 +2062,7 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
         </div>
       )}
 
+      {/* Success banner with live counts from the upload response */}
       {uploadResult && !uploading && !analysing && (
         <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(5,150,105,0.25)", background: "#ECFDF5" }}>
           <CheckCircle size={16} style={{ color: "var(--verse-emerald)" }} />
@@ -2012,38 +2072,50 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
         </div>
       )}
 
+      {/* Stat cards — all values come from the engine after upload */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Scenes" value={totalScenes} icon={FileText} color="var(--verse-midnight)" />
-        <StatCard label="Facts Extracted" value={totalFacts > 0 ? totalFacts : "—"} icon={Brain} color="var(--verse-violet)" />
-        <StatCard label="Entities Tracked" value={liveScenes.length > 0 ? liveScenes.reduce((n, s) => n + s.entities.length, 0) : 34} icon={Layers} color="var(--verse-gold)" />
-        <StatCard label="Semantic Score" value={liveScenes.length > 0 ? `${Math.round(liveScenes.reduce((n, s) => n + s.aiScore, 0) / liveScenes.length)}%` : "—"} icon={CheckCircle} color="var(--verse-emerald)" />
+        <StatCard label="Total Scenes"     value={totalScenes} icon={FileText}    color="var(--verse-midnight)" />
+        <StatCard label="Facts Extracted"  value={totalFacts}  icon={Brain}       color="var(--verse-violet)"   />
+        <StatCard label="Entities Tracked" value={entityCount} icon={Layers}      color="var(--verse-gold)"     />
+        <StatCard label="Semantic Score"   value={avgScore}    icon={CheckCircle} color="var(--verse-emerald)"  />
       </div>
 
+      {/* Scene cards — populated from SceneView after upload, demo cards before */}
       <div className="flex flex-col gap-4">
         {displayScenes.map((s, i) => (
           <Card key={i}>
             <div className="flex items-start justify-between mb-3">
               <div>
-                <h3 className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>{s.num}</h3>
-                <p className="text-xs text-muted-foreground">{liveScenes.length > 0 ? "Live — from uploaded screenplay" : "Demo data"}</p>
+                <h3 className="font-bold text-foreground text-sm" style={{ fontFamily: "var(--font-display)" }}>{s.num}</h3>
+                <p className="text-xs text-muted-foreground">{isLive ? "Live — from uploaded screenplay" : "Demo data"}</p>
               </div>
               {s.aiScore > 0 && <ScorePill value={s.aiScore} />}
             </div>
             <div>
               <p className="text-xs font-bold text-muted-foreground mb-2">Extracted Entities</p>
               <div className="flex flex-wrap gap-2">
-                {s.entities.map((e) => (
-                  <span key={e} className="text-xs px-2 py-1 rounded-lg border" style={{ borderColor: e.includes("⚠") ? "rgba(154,111,0,0.3)" : "var(--border)", color: e.includes("⚠") ? "var(--verse-gold)" : "var(--muted-foreground)", background: e.includes("⚠") ? "var(--verse-gold-light)" : "transparent" }}>
+                {s.entities.length > 0 ? s.entities.map((e) => (
+                  <span
+                    key={e}
+                    className="text-xs px-2 py-1 rounded-lg border"
+                    style={{
+                      borderColor: (s.hasConflict && isLive) ? "rgba(154,111,0,0.3)" : "var(--border)",
+                      color:       (s.hasConflict && isLive) ? "var(--verse-gold)"   : "var(--muted-foreground)",
+                      background:  (s.hasConflict && isLive) ? "var(--verse-gold-light)" : "transparent",
+                    }}
+                  >
                     {e}
                   </span>
-                ))}
+                )) : (
+                  <span className="text-xs text-muted-foreground italic">No entities extracted</span>
+                )}
               </div>
             </div>
           </Card>
         ))}
 
-        {/* Empty state before upload */}
-        {liveScenes.length === 0 && !uploadResult && (
+        {/* Empty state — shown before the first upload */}
+        {!isLive && !uploadResult && (
           <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-14 gap-3" style={{ borderColor: "rgba(124,58,237,0.2)" }}>
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--verse-violet-light)" }}>
               <FileText size={24} style={{ color: "var(--verse-violet)" }} />

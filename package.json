@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "start": "bash start.sh",
+    "start:lite": "bash start.sh --no-vision",
+    "start:fe-only": "bash start.sh --fe-only",
+    "stop": "bash stop.sh"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

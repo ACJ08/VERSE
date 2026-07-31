@@ -11,9 +11,19 @@ Email flows
                   password_reset_tokens table.
                   POST /auth/reset-password    → validates token, sets new password.
 
-Production email:
-  Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM in the environment.
-  When SMTP_HOST is absent, the token is returned in the JSON response so the
+Gmail setup (recommended for production / staging):
+  1. Enable 2-Step Verification on the Gmail account.
+  2. Create an App Password:
+       Google Account → Security → 2-Step Verification → App Passwords
+       Select "Mail" + "Other (Custom name)" → copy the 16-char password.
+  3. Set these env vars (in .env or shell):
+       SMTP_HOST=smtp.gmail.com
+       SMTP_PORT=465
+       SMTP_USE_SSL=true
+       SMTP_USER=you@gmail.com
+       SMTP_PASSWORD=<16-char app password>
+       SMTP_FROM=you@gmail.com
+  When SMTP_HOST is absent, the OTP is returned in the JSON response so the
   dev/demo flow works without an email server.
 """
 
@@ -26,6 +36,7 @@ import smtplib
 import string
 import uuid
 from contextlib import closing
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Annotated
 
@@ -40,8 +51,17 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ─── Email helper ──────────────────────────────────────────────────────────────
 
-def _send_email(to: str, subject: str, body: str) -> bool:
-    """Send via SMTP if configured; return True on success, False otherwise."""
+def _send_email(to: str, subject: str, plain: str, html: str | None = None) -> bool:
+    """Send an email via SMTP.
+
+    Supports two connection modes selected by SMTP_USE_SSL:
+      SMTP_USE_SSL=true  → SMTP_SSL on port 465  (Gmail recommended)
+      SMTP_USE_SSL=false → SMTP + STARTTLS on port 587  (default)
+
+    Returns True on success, False on any error or when SMTP is not configured.
+    Falls back gracefully — callers surface the OTP in the JSON response when
+    this returns False.
+    """
     host = os.getenv("SMTP_HOST", "")
     if not host:
         return False
@@ -50,19 +70,64 @@ def _send_email(to: str, subject: str, body: str) -> bool:
         user = os.getenv("SMTP_USER", "")
         password = os.getenv("SMTP_PASSWORD", "")
         from_addr = os.getenv("SMTP_FROM", user)
-        msg = MIMEText(body, "plain")
+        use_ssl = os.getenv("SMTP_USE_SSL", "false").strip().lower() in ("true", "1", "yes")
+
+        # Build the message — multipart/alternative so clients show HTML when supported
+        if html:
+            msg: MIMEMultipart | MIMEText = MIMEMultipart("alternative")
+            assert isinstance(msg, MIMEMultipart)
+            msg.attach(MIMEText(plain, "plain", "utf-8"))
+            msg.attach(MIMEText(html, "html", "utf-8"))
+        else:
+            msg = MIMEText(plain, "plain", "utf-8")
+
         msg["Subject"] = subject
         msg["From"] = from_addr
         msg["To"] = to
-        with smtplib.SMTP(host, port) as server:
-            server.ehlo()
-            server.starttls()
-            if user and password:
-                server.login(user, password)
-            server.sendmail(from_addr, [to], msg.as_string())
+
+        if use_ssl:
+            # Direct SSL connection — Gmail port 465
+            with smtplib.SMTP_SSL(host, port) as server:
+                if user and password:
+                    server.login(user, password)
+                server.sendmail(from_addr, [to], msg.as_string())
+        else:
+            # STARTTLS upgrade — standard port 587
+            with smtplib.SMTP(host, port) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                if user and password:
+                    server.login(user, password)
+                server.sendmail(from_addr, [to], msg.as_string())
         return True
     except Exception:
         return False
+
+
+def _otp_html(otp: str, purpose: str, expiry_minutes: int) -> str:
+    """Return a clean HTML email body for an OTP."""
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:30px">
+  <div style="max-width:480px;margin:auto;background:#ffffff;border-radius:8px;
+              padding:32px;border:1px solid #e0e0e0">
+    <h2 style="color:#1a1a2e;margin-top:0">VERSE — {purpose}</h2>
+    <p style="color:#444;font-size:15px">Use the code below to complete your request:</p>
+    <div style="font-size:36px;font-weight:bold;letter-spacing:10px;
+                color:#3b82d4;text-align:center;padding:20px 0">{otp}</div>
+    <p style="color:#888;font-size:13px">
+      This code expires in <strong>{expiry_minutes} minutes</strong>.
+      If you did not request this, you can safely ignore this email.
+    </p>
+    <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+    <p style="color:#bbb;font-size:11px;text-align:center;margin:0">
+      VERSE — AI-powered film continuity platform
+    </p>
+  </div>
+</body>
+</html>"""
 
 
 def _generate_otp(length: int = 6) -> str:
@@ -73,7 +138,23 @@ def _hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _token_expired(created_at: str, expiry_minutes: int) -> bool:
+    """Return True if the token stored at *created_at* (SQLite datetime string) has expired."""
+    from datetime import datetime, timezone
+    try:
+        issued = datetime.fromisoformat(created_at).replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - issued).total_seconds() / 60
+        return age > expiry_minutes
+    except Exception:
+        # Unparseable timestamp — treat as expired to be safe
+        return True
+
+
 # ─── DB helpers for token tables ──────────────────────────────────────────────
+
+# OTP validity windows — keep short enough to be secure, long enough to be usable
+_VERIFY_EMAIL_EXPIRY_MINUTES = 30
+_RESET_PASSWORD_EXPIRY_MINUTES = 15
 
 _TOKEN_SCHEMA = """
 CREATE TABLE IF NOT EXISTS email_verify_tokens (
@@ -134,7 +215,7 @@ class AuthResponse(BaseModel):
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/register", response_model=AuthResponse)
+@router.post("/register", response_model=AuthResponse, status_code=201)
 def register(req: RegisterRequest):
     conn = db()
     with closing(conn.cursor()) as cur:
@@ -176,7 +257,8 @@ def login(req: LoginRequest):
 def request_email_verification(current_user: Annotated[dict, Depends(get_current_user)]):
     """
     Generate a 6-digit OTP for email verification.
-    Sends it via SMTP when configured; returns it in the response body in dev mode.
+    Sends it via SMTP (Gmail or any provider) when configured; returns it in
+    the response body in dev mode so the frontend can prefill the field.
     """
     _ensure_token_tables()
     otp = _generate_otp()
@@ -185,19 +267,25 @@ def request_email_verification(current_user: Annotated[dict, Depends(get_current
     conn = db()
     with closing(conn.cursor()) as cur:
         cur.execute(
-            "INSERT OR REPLACE INTO email_verify_tokens (user_id, token_hash) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO email_verify_tokens (user_id, token_hash, created_at) "
+            "VALUES (?, ?, datetime('now'))",
             (current_user["id"], token_hash),
         )
     conn.commit()
 
+    plain = (
+        f"Your VERSE email verification code is: {otp}\n\n"
+        f"This code expires in {_VERIFY_EMAIL_EXPIRY_MINUTES} minutes.\n"
+        "If you did not request this, you can safely ignore this email."
+    )
     sent = _send_email(
         current_user["email"],
         "VERSE — Verify your email",
-        f"Your VERSE email verification code is: {otp}\n\nThis code is valid for 24 hours.",
+        plain,
+        _otp_html(otp, "Verify your email", _VERIFY_EMAIL_EXPIRY_MINUTES),
     )
-    response: dict = {"message": "Verification code sent."}
+    response: dict = {"message": "Verification code sent to your email."}
     if not sent:
-        # Dev/demo mode — surface the token so the frontend can prefill the OTP
         response["dev_token"] = otp
         response["message"] = "SMTP not configured — token returned for development."
     return response
@@ -213,12 +301,16 @@ def verify_email(
     conn = db()
     with closing(conn.cursor()) as cur:
         row = cur.execute(
-            "SELECT token_hash FROM email_verify_tokens WHERE user_id = ?",
+            "SELECT token_hash, created_at FROM email_verify_tokens WHERE user_id = ?",
             (current_user["id"],),
         ).fetchone()
 
     if row is None or row["token_hash"] != _hash_token(req.token):
         raise HTTPException(400, "Invalid or expired verification code.")
+
+    # Enforce expiry window
+    if _token_expired(row["created_at"], _VERIFY_EMAIL_EXPIRY_MINUTES):
+        raise HTTPException(400, "Verification code has expired. Please request a new one.")
 
     with closing(conn.cursor()) as cur:
         cur.execute("UPDATE users SET verified = 1 WHERE id = ?", (current_user["id"],))
@@ -252,15 +344,22 @@ def forgot_password(req: ForgotPasswordRequest):
 
     with closing(conn.cursor()) as cur:
         cur.execute(
-            "INSERT OR REPLACE INTO password_reset_tokens (email, token_hash) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO password_reset_tokens (email, token_hash, created_at) "
+            "VALUES (?, ?, datetime('now'))",
             (req.email.lower(), token_hash),
         )
     conn.commit()
 
+    plain = (
+        f"Your VERSE password reset code is: {otp}\n\n"
+        f"This code expires in {_RESET_PASSWORD_EXPIRY_MINUTES} minutes.\n"
+        "If you did not request this, you can safely ignore this email."
+    )
     sent = _send_email(
         req.email.lower(),
         "VERSE — Password reset code",
-        f"Your VERSE password reset code is: {otp}\n\nIf you did not request this, ignore this email.",
+        plain,
+        _otp_html(otp, "Reset your password", _RESET_PASSWORD_EXPIRY_MINUTES),
     )
     if not sent:
         response["dev_token"] = otp
@@ -275,12 +374,15 @@ def reset_password(req: ResetPasswordRequest):
     conn = db()
     with closing(conn.cursor()) as cur:
         row = cur.execute(
-            "SELECT token_hash FROM password_reset_tokens WHERE email = ?",
+            "SELECT token_hash, created_at FROM password_reset_tokens WHERE email = ?",
             (req.email.lower(),),
         ).fetchone()
 
     if row is None or row["token_hash"] != _hash_token(req.token):
         raise HTTPException(400, "Invalid or expired reset code.")
+
+    if _token_expired(row["created_at"], _RESET_PASSWORD_EXPIRY_MINUTES):
+        raise HTTPException(400, "Reset code has expired. Please request a new one.")
 
     with closing(conn.cursor()) as cur:
         cur.execute(
