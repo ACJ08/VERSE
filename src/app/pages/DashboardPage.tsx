@@ -3372,15 +3372,22 @@ function ProductionMemory({ projectId }: { projectId?: string }) {
 // PRODUCTION MANAGER PAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ProductionManagerOverview({ productionName }: { productionName: string }) {
+function ProductionManagerOverview({ productionName, projectId }: { productionName: string; projectId?: string }) {
+  const { overview } = useSceneViews(projectId ?? null);
+  const [liveTeam, setLiveTeam] = React.useState<TeamMember[] | null>(null);
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiProjects.getTeam(projectId).then(setLiveTeam).catch(() => {});
+  }, [projectId]);
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Production Manager" subtitle={`Coordination workspace for ${productionName}.`} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Team Members" value={12} icon={Users} color="var(--verse-midnight)" />
-        <StatCard label="Active Tasks" value={18} icon={CheckCircle} color="var(--verse-violet)" />
-        <StatCard label="Days on Schedule" value={22} icon={Calendar} color="var(--verse-emerald)" />
-        <StatCard label="Budget Used" value="68%" icon={BarChart3} color="var(--verse-gold)" />
+        <StatCard label="Team Members" value={liveTeam?.length ?? 12} icon={Users} color="var(--verse-midnight)" />
+        <StatCard label="Open Issues" value={overview?.issues_total ?? "—"} icon={CheckCircle} color="var(--verse-violet)" />
+        <StatCard label="Scenes Shot" value={overview ? `${overview.scenes_shot}/${overview.scenes_total}` : "—"} icon={Calendar} color="var(--verse-emerald)" />
+        <StatCard label="Avg. Score" value={overview?.average_scene_score != null ? `${overview.average_scene_score}%` : "—"} icon={BarChart3} color="var(--verse-gold)" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Card>
@@ -3743,37 +3750,64 @@ function Notes() {
   );
 }
 
-function ContinuityUpdates() {
-  const updates = [
+function ContinuityUpdates({ projectId }: { projectId?: string }) {
+  const demoUpdates = [
     { id: "u1", title: "AI flagged costume discrepancy — Scene 23", time: "11:42", type: "ai", body: "Elena's jacket colour changes from navy to black between shots 23A and 23C. Wardrobe team notified." },
     { id: "u2", title: "Marcus watch continuity issue logged", time: "09:30", type: "flag", body: "Watch absent in shots 31B–31D. Script supervisor requesting resolution before afternoon shoot." },
     { id: "u3", title: "Scene 17 fully verified", time: "Yesterday", type: "verified", body: "All costume, prop, and timeline elements confirmed. Continuity score: 100%." },
   ];
+  const [updates, setUpdates] = React.useState(demoUpdates);
+  const [isLive, setIsLive] = React.useState(false);
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiContinuity.issues(projectId)
+      .then((issues) => {
+        setIsLive(true);
+        setUpdates(
+          issues.slice(0, 10).map((i) => ({
+            id: i.issue_id,
+            title: i.explanation || `${i.category}: ${i.attribute}`,
+            time: "Live",
+            type: i.status === "resolved" || i.status === "dismissed" ? "verified" : i.severity === "critical" ? "flag" : "ai",
+            body: i.suggested_fix || i.explanation || "Review the flagged scene with your continuity supervisor.",
+          }))
+        );
+      })
+      .catch(() => {});
+  }, [projectId]);
+
   const colors = { ai: "var(--verse-violet)", flag: "var(--verse-red)", verified: "var(--verse-emerald)" };
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Continuity Updates" subtitle="Latest continuity changes affecting your department." />
-      <div className="flex flex-col gap-3">
-        {updates.map((u) => {
-          const c = colors[u.type as keyof typeof colors];
-          return (
-            <Card key={u.id}>
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${c} 12%, white)` }}>
-                  <Brain size={16} style={{ color: c }} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-bold text-foreground text-sm">{u.title}</h3>
-                    <span className="text-xs text-muted-foreground">{u.time}</span>
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Continuity Updates <DataSourceBadge live={isLive} /></span>}
+        subtitle="Latest continuity changes affecting your department."
+      />
+      {updates.length === 0 ? (
+        <EmptyState icon={Brain} title="No updates yet" description="Continuity updates will appear after a screenplay is uploaded and analysed." />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {updates.map((u) => {
+            const c = colors[u.type as keyof typeof colors];
+            return (
+              <Card key={u.id}>
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${c} 12%, white)` }}>
+                    <Brain size={16} style={{ color: c }} />
                   </div>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{u.body}</p>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-foreground text-sm">{u.title}</h3>
+                      <span className="text-xs text-muted-foreground">{u.time}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{u.body}</p>
+                  </div>
                 </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
