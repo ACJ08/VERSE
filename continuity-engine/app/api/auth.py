@@ -39,8 +39,11 @@ from contextlib import closing
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Annotated
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.core.database import db
@@ -48,6 +51,13 @@ from app.core.dependencies import get_current_user
 from app.core.security import create_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# ─── Google OAuth constants ────────────────────────────────────────────────────
+
+_GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+_GOOGLE_SCOPE = "openid email profile"
 
 # ─── Email helper ──────────────────────────────────────────────────────────────
 
@@ -399,6 +409,136 @@ def reset_password(req: ResetPasswordRequest):
 @router.get("/me")
 def me(current_user: Annotated[dict, Depends(get_current_user)]):
     return {k: v for k, v in current_user.items() if k != "hashed_pw"}
+
+
+# ─── Google OAuth ──────────────────────────────────────────────────────────────
+
+@router.get("/google", include_in_schema=True, tags=["auth"])
+def google_login():
+    """Redirect the browser to Google's OAuth 2.0 consent screen.
+
+    Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to be set in .env.
+    Returns 501 if credentials are not configured.
+    """
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    if not client_id:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Google OAuth is not configured. "
+                "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in continuity-engine/.env "
+                "then restart the server. See .env.example for instructions."
+            ),
+        )
+    backend_base = os.getenv("BACKEND_URL", "http://localhost:8000")
+    params = {
+        "client_id": client_id,
+        "redirect_uri": f"{backend_base}/auth/google/callback",
+        "response_type": "code",
+        "scope": _GOOGLE_SCOPE,
+        "access_type": "offline",
+        "prompt": "select_account",
+    }
+    return RedirectResponse(f"{_GOOGLE_AUTH_URL}?{urlencode(params)}")
+
+
+@router.get("/google/callback", include_in_schema=True, tags=["auth"])
+async def google_callback(code: str | None = None, error: str | None = None):
+    """Handle Google's redirect back after the user grants consent.
+
+    Exchanges the authorisation code for tokens, fetches the user's Google
+    profile, upserts the user in the local DB, mints a VERSE JWT, and
+    redirects the browser to the frontend with the token in the query string.
+    """
+    frontend_url = os.getenv("GOOGLE_REDIRECT_FRONTEND", "http://localhost:5173")
+
+    # User denied consent or something went wrong on Google's side
+    if error or not code:
+        return RedirectResponse(
+            f"{frontend_url}?auth_error={error or 'access_denied'}"
+        )
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    backend_base = os.getenv("BACKEND_URL", "http://localhost:8000")
+
+    if not client_id or not client_secret:
+        return RedirectResponse(f"{frontend_url}?auth_error=not_configured")
+
+    # Exchange authorisation code → access token
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            _GOOGLE_TOKEN_URL,
+            data={
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": f"{backend_base}/auth/google/callback",
+                "grant_type": "authorization_code",
+            },
+        )
+        if token_resp.status_code != 200:
+            return RedirectResponse(f"{frontend_url}?auth_error=token_exchange_failed")
+
+        tokens = token_resp.json()
+        access_token_google = tokens.get("access_token", "")
+
+        # Fetch the user's Google profile
+        userinfo_resp = await client.get(
+            _GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token_google}"},
+        )
+        if userinfo_resp.status_code != 200:
+            return RedirectResponse(f"{frontend_url}?auth_error=userinfo_failed")
+
+        info = userinfo_resp.json()
+
+    google_email: str = info.get("email", "").lower()
+    google_name: str = info.get("name", "") or google_email.split("@")[0]
+
+    if not google_email:
+        return RedirectResponse(f"{frontend_url}?auth_error=no_email")
+
+    # Upsert user — create on first sign-in, reuse existing account on repeat visits
+    conn = db()
+    with closing(conn.cursor()) as cur:
+        row = cur.execute(
+            "SELECT * FROM users WHERE email = ?", (google_email,)
+        ).fetchone()
+
+        if row is None:
+            # First-time Google sign-in — create an account (no password needed)
+            user_id = str(uuid.uuid4())
+            cur.execute(
+                "INSERT INTO users (id, email, name, hashed_pw, role, verified) "
+                "VALUES (?, ?, ?, ?, ?, 1)",
+                # hashed_pw is set to a random unguessable value — Google users
+                # never need a password, and this slot cannot be used to log in
+                # via the email/password endpoint.
+                (user_id, google_email, google_name, hash_password(uuid.uuid4().hex), "producer"),
+            )
+            conn.commit()
+            row = cur.execute(
+                "SELECT * FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+        else:
+            # Existing user — mark as verified in case they registered by email first
+            cur.execute(
+                "UPDATE users SET verified = 1 WHERE email = ?", (google_email,)
+            )
+            conn.commit()
+
+    user = {k: v for k, v in dict(row).items() if k != "hashed_pw"}
+    verse_token = create_token(user["id"], user["email"])
+
+    # Redirect to frontend with the VERSE JWT and user info as query params
+    params = urlencode({
+        "token": verse_token,
+        "name": user["name"],
+        "email": user["email"],
+        "role": user.get("role", "producer"),
+    })
+    return RedirectResponse(f"{frontend_url}/auth/callback?{params}")
 
 
 class UpdateProfileRequest(BaseModel):

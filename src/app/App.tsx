@@ -19,7 +19,7 @@ import { TokenStore, UserStore } from "@/app/lib/api";
 type AppView =
   | "landing" | "sign-in" | "create-account" | "forgot-password"
   | "email-verification" | "role-selection" | "production-type"
-  | "create-workspace" | "dashboard";
+  | "create-workspace" | "dashboard" | "oauth-callback";
 
 // ─── App State ─────────────────────────────────────────────────────────────────
 
@@ -46,8 +46,45 @@ function resolveRoleFromLabel(roleLabel?: string): UserRole | null {
 
 export default function App() {
   // Attempt to restore session on first load.
-  // Priority: real JWT user from localStorage → sessionStorage demo state → landing.
+  // Priority: OAuth callback → real JWT user from localStorage → sessionStorage demo state → landing.
   const getInitialState = (): AppState => {
+    // 0. Google OAuth callback — /auth/callback?token=...&name=...&email=...&role=...
+    if (window.location.pathname === "/auth/callback") {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      const authError = params.get("auth_error");
+
+      if (authError) {
+        // Clear the URL so a refresh doesn't re-trigger, then fall through to sign-in
+        window.history.replaceState({}, "", "/");
+        return {
+          currentView: "sign-in",
+          userEmail: "", userName: "", selectedRole: null,
+          selectedProductionType: null, productionName: "The Last Scene",
+        };
+      }
+
+      if (token) {
+        const name = params.get("name") ?? "";
+        const email = params.get("email") ?? "";
+        const role = params.get("role") ?? "producer";
+        // Persist JWT and a minimal user object so the session survives refresh
+        TokenStore.set(token);
+        UserStore.set({ id: "", email, name, role, verified: 1, created_at: "" });
+        // Clean up the URL — remove the sensitive token from the address bar
+        window.history.replaceState({}, "", "/");
+        return {
+          currentView: "dashboard",
+          userEmail: email, userName: name,
+          selectedRole: resolveRoleFromLabel(role) ?? "producer",
+          selectedProductionType: null, productionName: "The Last Scene",
+        };
+      }
+
+      // Malformed callback — clear URL and go to sign-in
+      window.history.replaceState({}, "", "/");
+    }
+
     // 1. Real authenticated user (JWT present + stored user object)
     const token = TokenStore.get();
     const apiUser = UserStore.get();
