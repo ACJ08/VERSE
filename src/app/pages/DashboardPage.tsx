@@ -4134,7 +4134,7 @@ function DashboardContent({
         case "Timeline Tracking": return <TimelineTracking projectId={projectId} />;
         case "Continuity Verification": return <ContinuityVerification projectId={projectId} />;
         case "Production Memory": return <ProductionMemory projectId={projectId} />;
-        default: return <ContinuitySupervisorOverview productionName={productionName} />;
+        default: return <ContinuitySupervisorOverview productionName={productionName} projectId={projectId} />;
       }
 
     case "production-manager":
@@ -4143,14 +4143,14 @@ function DashboardContent({
         case "Scheduling": return <Scheduling />;
         case "Workspace Management": return <WorkspaceManagement />;
         case "Reports": return <ManagerReports />;
-        default: return <ProductionManagerOverview productionName={productionName} />;
+        default: return <ProductionManagerOverview productionName={productionName} projectId={projectId} />;
       }
 
     case "department-member":
       switch (activeNav) {
         case "My Tasks": return <MyTasks />;
         case "Notes": return <Notes />;
-        case "Continuity Updates": return <ContinuityUpdates />;
+        case "Continuity Updates": return <ContinuityUpdates projectId={projectId} />;
         case "Discussions": return <Discussions />;
         default: return <DeptMemberOverview productionName={productionName} />;
       }
