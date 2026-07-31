@@ -1,77 +1,15 @@
 // Authentication Pages
 // Sign In, Create Account, Forgot Password, Email Verification.
-// Sign In includes a prominent Demo Accounts panel for one-click role-based access.
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { auth, TokenStore, UserStore } from "@/app/lib/api";
 import {
   Eye, EyeOff, ArrowLeft, Mail, Lock, User, Building2,
-  CheckCircle, ArrowRight, Zap, ChevronDown, ChevronUp,
+  CheckCircle, ArrowRight,
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import verseLogo from "@/imports/VERSE_LOGO_2.png";
-
-// ─── Demo Account Definitions ──────────────────────────────────────────────────
-
-// Each demo account represents a distinct VERSE user role.
-// Users can click "Login as [Role]" to instantly autofill and sign in.
-const demoAccounts = [
-  {
-    role: "Producer",
-    email: "producer@verse.ai",
-    password: "demo2024",
-    icon: "🎬",
-    color: "var(--verse-midnight)",
-    bg: "var(--verse-midnight-light)",
-    description: "Full production overview, team management, AI analytics",
-  },
-  {
-    role: "Director",
-    email: "director@verse.ai",
-    password: "demo2024",
-    icon: "🎭",
-    color: "var(--verse-violet)",
-    bg: "var(--verse-violet-light)",
-    description: "Scene tracking, character continuity, AI recommendations",
-  },
-  {
-    role: "Script Supervisor",
-    email: "supervisor@verse.ai",
-    password: "demo2024",
-    icon: "📋",
-    color: "#0F62FE",
-    bg: "#EFF6FF",
-    description: "Continuity tracking, screenplay analysis, AI alerts",
-  },
-  {
-    role: "Continuity Supervisor",
-    email: "continuity@verse.ai",
-    password: "demo2024",
-    icon: "🔍",
-    color: "var(--verse-emerald)",
-    bg: "#ECFDF5",
-    description: "Costume, prop, and timeline continuity verification",
-  },
-  {
-    role: "Production Manager",
-    email: "manager@verse.ai",
-    password: "demo2024",
-    icon: "📊",
-    color: "var(--verse-gold)",
-    bg: "var(--verse-gold-light)",
-    description: "Team collaboration, scheduling, workspace management",
-  },
-  {
-    role: "Film Student",
-    email: "student@verse.ai",
-    password: "demo2024",
-    icon: "🎓",
-    color: "var(--verse-red)",
-    bg: "#FEF2F2",
-    description: "Demo workspace, tutorials, sample productions",
-  },
-];
 
 // ─── Shared Auth Layout ────────────────────────────────────────────────────────
 
@@ -183,81 +121,6 @@ function FormInput({
   );
 }
 
-// ─── Demo Accounts Panel ───────────────────────────────────────────────────────
-
-// Demo Accounts Panel
-// Displays all available demo role accounts with one-click autofill + login.
-// Appears as a collapsible section below the sign-in form.
-function DemoAccountsPanel({
-  onDemoLogin,
-}: {
-  onDemoLogin: (email: string, password: string, role: string) => void;
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  return (
-    <div className="mt-6 border border-border rounded-2xl overflow-hidden">
-      {/* Panel header — toggle button */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-5 py-4 bg-muted/50 hover:bg-muted transition-colors"
-      >
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: "var(--verse-violet-light)" }}>
-            <Zap size={14} style={{ color: "var(--verse-violet)" }} />
-          </div>
-          <div className="text-left">
-            <p className="text-sm font-bold text-foreground">Demo Accounts</p>
-            <p className="text-xs text-muted-foreground">One-click access to any role</p>
-          </div>
-        </div>
-        {isExpanded ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
-      </button>
-
-      {/* Demo account cards — collapsible */}
-      {isExpanded && (
-        <div className="p-4 grid grid-cols-1 gap-2.5">
-          {demoAccounts.map((account) => (
-            <div
-              key={account.role}
-              className="flex items-center gap-3 p-3 rounded-xl border hover:shadow-sm transition-all group" style={{ background: "linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)", borderColor: "rgba(209,205,242,0.8)" }}
-            >
-              {/* Role icon */}
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
-                style={{ backgroundColor: account.bg }}
-              >
-                {account.icon}
-              </div>
-
-              {/* Role info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-foreground">{account.role}</p>
-                <p className="text-xs text-muted-foreground truncate">{account.email}</p>
-              </div>
-
-              {/* One-click login button */}
-              <button
-                onClick={() => onDemoLogin(account.email, account.password, account.role)}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:-translate-y-0.5"
-                style={{ backgroundColor: account.bg, color: account.color }}
-              >
-                Login <ArrowRight size={11} />
-              </button>
-            </div>
-          ))}
-
-          {/* Shared password hint */}
-          <p className="text-xs text-muted-foreground text-center mt-1 pb-1">
-            All demo accounts use password:{" "}
-            <span className="font-mono font-bold text-foreground">demo2024</span>
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Sign In Page ──────────────────────────────────────────────────────────────
 
 export function SignInPage({
@@ -299,27 +162,11 @@ export function SignInPage({
     }
   };
 
-  // One-click demo login — tries real auth first, falls back gracefully
-  const handleDemoLogin = async (demoEmail: string, demoPassword: string, role: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    setIsLoading(true);
-    toast.loading(`Signing in as ${role}…`);
-    try {
-      const res = await auth.login(demoEmail, demoPassword);
-      TokenStore.set(res.access_token);
-      UserStore.set(res.user);
-      toast.dismiss();
-      toast.success(`Welcome, ${res.user.name || role}! Your workspace is ready.`);
-      onSignIn(res.user.role || role);
-    } catch {
-      // Backend not running — use demo flow
-      toast.dismiss();
-      toast.success(`Welcome, ${role}! Your demo workspace is ready.`);
-      onSignIn(role);
-    } finally {
-      setIsLoading(false);
-    }
+  // Google OAuth — redirects to backend Google OAuth endpoint
+  const handleGoogleSignIn = () => {
+    const apiBase = import.meta.env.VITE_API_URL || "";
+    const googleOAuthUrl = `${apiBase}/auth/google`;
+    window.location.href = googleOAuthUrl;
   };
 
   return (
@@ -394,21 +241,25 @@ export function SignInPage({
       {/* SSO options */}
       <div className="flex items-center gap-3 my-5">
         <div className="flex-1 h-px bg-border" />
-        <span className="text-xs text-muted-foreground">or</span>
+        <span className="text-xs text-muted-foreground">or continue with</span>
         <div className="flex-1 h-px bg-border" />
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-1">
-        {["Google", "Microsoft"].map((p) => (
-          <button key={p}
-            className="h-11 border border-border rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors"
-            onClick={() => toast.info(`${p} SSO coming soon.`)}>
-            {p}
-          </button>
-        ))}
-      </div>
 
-      {/* Demo Accounts Panel */}
-      <DemoAccountsPanel onDemoLogin={handleDemoLogin} />
+      {/* Google Sign-In */}
+      <button
+        onClick={handleGoogleSignIn}
+        className="w-full h-11 border border-border rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-3"
+      >
+        {/* Google "G" logo */}
+        <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          <path fill="none" d="M0 0h48v48H0z"/>
+        </svg>
+        Continue with Google
+      </button>
 
       <p className="text-xs text-muted-foreground text-center mt-5">
         By signing in you agree to our{" "}
