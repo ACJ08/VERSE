@@ -824,7 +824,6 @@ function ProducerOverview({ productionName, onAIAction, projectId, userName }: {
     if (!projectId) return;
     apiContinuity.issues(projectId)
       .then((issues) => {
-        if (!issues.length) return;
         setLiveRecs(
           issues.slice(0, 5).map((i) => ({
             id: i.issue_id,
@@ -1188,7 +1187,6 @@ function ProducerContinuityReports({ projectId }: { projectId?: string }) {
   React.useEffect(() => {
     if (!projectId) return;
     apiContinuity.issues(projectId).then((issues) => {
-      if (!issues.length) return;
       const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       setLiveReportRows(
         issues.slice(0, 10).map((issue, i) => ({
@@ -1490,7 +1488,6 @@ function DirectorOverview({ productionName, onAIAction, projectId }: { productio
   React.useEffect(() => {
     if (!projectId) return;
     apiContinuity.issues(projectId).then((issues) => {
-      if (!issues.length) return;
       setLiveRecs(issues.slice(0, 3).map((i) => ({
         id: i.issue_id, severity: toDisplaySeverity(i.severity),
         scene: i.scene_id ?? "—", issue: i.explanation || i.attribute,
@@ -1871,7 +1868,6 @@ function ScriptSupervisorOverview({ productionName, onAIAction, projectId }: { p
   React.useEffect(() => {
     if (!projectId) return;
     apiContinuity.issues(projectId).then((issues) => {
-      if (!issues.length) return;
       setLiveRecs(issues.slice(0, 2).map((i) => ({
         id: i.issue_id, severity: toDisplaySeverity(i.severity),
         scene: i.scene_id ?? "—", issue: i.explanation || i.attribute,
