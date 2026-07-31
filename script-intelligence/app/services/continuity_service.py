@@ -14,10 +14,62 @@ from app.parsers.document_parser import extract_text
 from app.parsers.scene_splitter import split_into_scenes, parse_scene_metadata
 from app.utils.file_utils import save_upload, save_extracted_text
 from app.utils.text_utils import clean_screenplay_text, extract_action_prose
-from app.schemas.continuity import SceneContinuity, ContinuityNote
+from app.schemas.continuity import SceneContinuity, ContinuityNote, SceneMetadata
 from app.schemas.responses import AnalyseScriptResponse
 
 logger = get_logger(__name__)
+
+
+def _is_granite_reachable() -> bool:
+    """Quick TCP probe to check if the Granite inference server is reachable.
+
+    Avoids the full 60s timeout × 3 retries when the server is simply offline.
+    Returns True only when a TCP connection to the configured host:port succeeds.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    url = settings.GRANITE_BASE_URL
+    parsed = urlparse(url if "://" in url else f"http://{url}")
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 80
+    try:
+        with socket.create_connection((host, port), timeout=2.0):
+            return True
+    except OSError:
+        return False
+
+
+def _heuristic_scenes(
+    scene_texts: List[str],
+    filename: str,
+) -> AnalyseScriptResponse:
+    """Return a basic AnalyseScriptResponse using heuristic metadata only.
+
+    Used as immediate fallback when the Granite server is unreachable so the
+    continuity engine receives structured scene data without waiting for timeouts.
+    """
+    scenes: List[SceneContinuity] = []
+    for idx, scene_txt in enumerate(scene_texts):
+        scene_id = f"SCENE_{idx + 1:03d}"
+        meta = parse_scene_metadata(scene_text=scene_txt, scene_id=scene_id)
+        scenes.append(
+            SceneContinuity(
+                metadata=meta,
+                characters=[],
+                props=[],
+                lighting=None,
+                continuity_notes=[],
+                confidence_score=0.5,
+                action=extract_action_prose(scene_txt),
+            )
+        )
+    return AnalyseScriptResponse(
+        filename=filename,
+        scene_count=len(scenes),
+        scenes=scenes,
+        errors=["Granite server unreachable — returned heuristic scene structure only."],
+    )
 
 
 class ContinuityService:
@@ -27,6 +79,10 @@ class ContinuityService:
     def analyse_script_pipeline(file: UploadFile) -> AnalyseScriptResponse:
         """
         Full pipeline: Upload -> Extract -> Split -> Parallel Granite Scene Analysis.
+
+        Graceful degradation: when the Granite inference server is unreachable, returns
+        heuristic scene structure immediately rather than blocking for several minutes
+        on connection timeouts.
         """
         if not is_granite_configured():
             raise InferenceError(
@@ -53,7 +109,17 @@ class ContinuityService:
         if not scene_texts:
             raise ParsingError("No scenes detected in the uploaded screenplay.")
 
-        # 5. Parallel scene analysis using ThreadPoolExecutor
+        # 5a. Fast reachability probe — skip the LLM entirely if server is down
+        #     so the calling continuity engine gets a structured response in <3s
+        #     instead of timing out after 120s.
+        if not _is_granite_reachable():
+            logger.warning(
+                "Granite server at %s is unreachable — returning heuristic scene structure.",
+                settings.GRANITE_BASE_URL,
+            )
+            return _heuristic_scenes(scene_texts, file.filename or "unknown")
+
+        # 5b. Parallel scene analysis using ThreadPoolExecutor
         analysed_scenes: List[SceneContinuity] = [None] * len(scene_texts)  # Pre-allocate to keep order
         errors: List[str] = []
 

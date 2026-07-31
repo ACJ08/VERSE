@@ -30,6 +30,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
+except ImportError:
+    pass  # python-dotenv not installed — rely on shell environment variables
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 from main import build_observations

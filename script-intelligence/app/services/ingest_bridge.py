@@ -36,29 +36,16 @@ _HTTP_TIMEOUT = float(os.getenv("CONTINUITY_ENGINE_TIMEOUT", "30"))
 
 def _scene_continuity_to_engine_payload(
     scenes: List[SceneContinuity],
-    project_id: str,
 ) -> dict:
     """Convert a list of SceneContinuity objects to the continuity-engine scene JSON.
 
-    Engine expected shape (DynamicParser understands arbitrary nested JSON):
-    {
-      "project_id": "<id>",
-      "source": "script",
-      "scenes": [
-        {
-          "scene_id": "SCENE_001",
-          "sequence": 1,
-          "location": "INT. KITCHEN - NIGHT",
-          "time_of_day": "NIGHT",
-          "characters": [{"name": "SARAH", "type": "character",
-                          "costume": "blue jacket", "position": "...", "movement": "..."}],
-          "props":      [{"name": "coffee mug", "type": "prop",
-                          "hand_usage": "right", "state": null, "owner": "SARAH"}],
-          "lighting":   {"description": "...", "source": "...", "mood": "...",
-                         "time_of_day": "NIGHT"}
-        }
-      ]
-    }
+    Returns the *inner* payload dict that goes inside IngestRequest.payload.
+    The engine's DynamicParser reads ``source`` + ``scenes`` from this dict.
+    The outer ``project_id`` is sent as a sibling field, not nested inside here.
+
+    Engine IngestRequest shape:
+      POST /continuity/ingest/script
+      {"project_id": "<id>", "payload": {"source": "script", "scenes": [...]}}
     """
     engine_scenes = []
     for idx, sc in enumerate(scenes):
@@ -100,7 +87,6 @@ def _scene_continuity_to_engine_payload(
         engine_scenes.append(scene_entry)
 
     return {
-        "project_id": project_id,
         "source": "script",
         "scenes": engine_scenes,
     }
@@ -118,7 +104,7 @@ def forward_scenes_to_engine(
     if not scenes:
         return None
 
-    payload_body = _scene_continuity_to_engine_payload(scenes, project_id)
+    payload_body = _scene_continuity_to_engine_payload(scenes)
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if _ENGINE_TOKEN:

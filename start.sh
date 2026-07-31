@@ -117,6 +117,16 @@ echo -e "${BOLD}${CYAN}╚══════════════════
 echo ""
 
 # =============================================================================
+# Pre-export service URLs so child processes inherit them.
+# These are also written into each service's own .env file; exporting here is
+# the safety net for environments where .env files are not present.
+# Shell variables win over .env because load_dotenv(override=False) is used.
+# =============================================================================
+export SCRIPT_SERVICE_URL="${SCRIPT_SERVICE_URL:-http://localhost:8100}"
+export VISION_SERVICE_URL="${VISION_SERVICE_URL:-http://localhost:8200}"
+export CONTINUITY_ENGINE_URL="${CONTINUITY_ENGINE_URL:-http://localhost:8000}"
+
+# =============================================================================
 # 1. Continuity Engine  (port 8000)  — always started
 # =============================================================================
 log "Starting ${BOLD}Continuity Engine${NC} on port 8000…"
@@ -136,13 +146,12 @@ if $RUN_SCRIPT; then
     ensure_venv "$ROOT/script-intelligence" "script-intelligence"
     start_service "SCRIPT" "$GREEN" 8100 "$ROOT/script-intelligence" \
       "uvicorn app.main:app --reload --port 8100"
-    # Wire the URL into the engine's env if not already set
-    export SCRIPT_SERVICE_URL="${SCRIPT_SERVICE_URL:-http://localhost:8100}"
   else
     warn "script-intelligence/requirements.txt not found — skipping"
   fi
 else
   warn "Script Intelligence skipped (--no-script)"
+  unset SCRIPT_SERVICE_URL  # Engine must not try to call a service that is not running
 fi
 
 # =============================================================================
@@ -154,12 +163,12 @@ if $RUN_VISION; then
     ensure_venv "$ROOT/vision_pipeline" "vision_pipeline"
     start_service "VISION" "$YELLOW" 8200 "$ROOT/vision_pipeline" \
       "uvicorn service:app --reload --port 8200"
-    export VISION_SERVICE_URL="${VISION_SERVICE_URL:-http://localhost:8200}"
   else
     warn "vision_pipeline/requirements.txt not found — skipping"
   fi
 else
   warn "Vision Pipeline skipped (--no-vision)"
+  unset VISION_SERVICE_URL  # Engine must not try to call a service that is not running
 fi
 
 # =============================================================================
