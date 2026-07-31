@@ -38,14 +38,13 @@ import {
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import verseLogo from "@/imports/VERSE_LOGO_2.png";
 import {
-  mockProductions, continuityHealthData, sceneTimelineData,
-  aiRecommendations, teamMembers, characters,
-  userRoles, type UserRole,
+  userRoles, aiRecommendations, teamMembers, characters, type UserRole,
 } from "@/app/data/mockData";
 import {
   projects as apiProjects, continuity as apiContinuity, upload as apiUpload,
   sceneStatus, slotStateLabel, slotValue, pct, toDisplaySeverity,
   type SceneView, type EntityView, type SlotView, type FootageUploadResult,
+  type UploadResult, type Project, type TeamMember,
 } from "@/app/lib/api";
 import {
   useBackendHealth, useSceneViews, useEntityViews, useFootageUpload,
@@ -434,12 +433,6 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
     { label: "Generating explainable AI recommendations…", duration: 700 },
   ];
 
-  const fallbackResults = [
-    { severity: "critical" as const, scene: "Scene 18", issue: "Timeline inconsistency: references 'Tuesday morning' but Scene 17 established 'Monday evening'.", confidence: 99 },
-    { severity: "warning" as const, scene: "Scene 23", issue: "Elena's jacket changes from navy to black between shots 23A and 23C.", confidence: 96 },
-    { severity: "warning" as const, scene: "Scene 31", issue: "Marcus's watch absent in shots 31B–31D but present in 31A and 31E.", confidence: 89 },
-  ];
-
   const runAnalysis = React.useCallback(async () => {
     setPhase("loading");
     setStepIndex(0);
@@ -454,7 +447,7 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
     };
     animateSteps();
 
-    // Real API call — falls back to demo data if backend is offline
+    // Real API call — show no results if backend offline or no screenplay ingested yet
     try {
       const pid = projectId ?? "VERSE_DEMO";
       const report = await apiContinuity.analyse(pid);
@@ -469,8 +462,7 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
         }))
       );
     } catch {
-      // Backend offline or no data — keep fallback
-      setLiveIssues(fallbackResults);
+      // Backend offline or no screenplay uploaded yet — leave liveIssues empty
     }
 
     // Wait for animation to finish before showing results
@@ -495,7 +487,7 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
 
   if (!isOpen) return null;
 
-  const displayResults = liveIssues.length > 0 ? liveIssues : fallbackResults;
+  const displayResults = liveIssues;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -544,7 +536,13 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
                 <p className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>Analysis Complete</p>
                 <GoldBadge>{displayResults.length} issue{displayResults.length !== 1 ? "s" : ""} found</GoldBadge>
               </div>
-              {displayResults.map((result, idx) => {
+              {displayResults.length === 0 ? (
+                <div className="py-6 text-center">
+                  <CheckCircle size={32} className="mx-auto mb-2 text-emerald-500" />
+                  <p className="text-sm font-semibold text-foreground">No issues detected</p>
+                  <p className="text-xs text-muted-foreground mt-1">Upload a screenplay first to run continuity analysis.</p>
+                </div>
+              ) : displayResults.map((result, idx) => {
                 const colors = {
                   critical: { color: "var(--verse-red)", bg: "#FEF2F2", label: "Critical" },
                   warning: { color: "var(--verse-gold)", bg: "var(--verse-gold-light)", label: "Warning" },
@@ -562,12 +560,14 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
                   </div>
                 );
               })}
-              <button
-                onClick={() => { onClose(); toast.success("Analysis report saved to Continuity Reports."); }}
-                className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
-              >
-                Save Report <Download size={15} />
-              </button>
+              {displayResults.length > 0 && (
+                <button
+                  onClick={() => { onClose(); toast.success("Analysis report saved to Continuity Reports."); }}
+                  className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
+                >
+                  Save Report <Download size={15} />
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -808,45 +808,56 @@ function ProducerOverview({ productionName, onAIAction, projectId, userName }: {
   const [newProdName, setNewProdName] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // ── Live continuity issues from the engine ──────────────────────────────────
-  // When the backend is online and a project is active, fetch real issues from
-  // GET /continuity/issues/{project_id}.  Falls back to the static mock array
-  // (aiRecommendations from mockData.ts) when the backend is offline or no
-  // project has been created yet — preserving the full demo experience.
-  const [liveRecs, setLiveRecs] = React.useState<typeof aiRecommendations | null>(null);
+  // Live projects from the API
+  const [liveProjects, setLiveProjects] = React.useState<Project[] | null>(null);
+  React.useEffect(() => {
+    apiProjects.list().then(setLiveProjects).catch(() => {});
+  }, []);
+
+  // Live continuity issues from the engine
+  const [liveRecs, setLiveRecs] = React.useState<Array<{
+    id: string; severity: "critical" | "warning" | "info";
+    scene: string; issue: string; confidence: number;
+    suggestion: string; timestamp: string;
+  }> | null>(null);
   React.useEffect(() => {
     if (!projectId) return;
-    {
-      apiContinuity.issues(projectId)
-        .then((issues) => {
-          if (!issues.length) return; // no data yet — keep mock
-          setLiveRecs(
-            issues.slice(0, 5).map((i) => ({
-              id: i.issue_id,
-              severity: toDisplaySeverity(i.severity),
-              scene: i.scene_id ?? "—",
-              issue: i.explanation || i.attribute,
-              confidence: Math.round(i.confidence * 100),
-              suggestion: i.suggested_fix || "Review the flagged scene with your script supervisor.",
-              timestamp: "Just now",
-            }))
-          );
-        })
-        .catch(() => {}); // backend offline — keep mock
-    }
+    apiContinuity.issues(projectId)
+      .then((issues) => {
+        if (!issues.length) return;
+        setLiveRecs(
+          issues.slice(0, 5).map((i) => ({
+            id: i.issue_id,
+            severity: toDisplaySeverity(i.severity),
+            scene: i.scene_id ?? "—",
+            issue: i.explanation || i.attribute,
+            confidence: Math.round(i.confidence * 100),
+            suggestion: i.suggested_fix || "Review the flagged scene with your script supervisor.",
+            timestamp: "Just now",
+          }))
+        );
+      })
+      .catch(() => {});
   }, [projectId]);
 
-  // Use live data when available; fall back to design-time mock array
-  const displayRecs = liveRecs ?? aiRecommendations;
+  // Live scene overview
+  const { overview, scenes: liveScenes } = useSceneViews(projectId ?? null);
+
+  // Live team from the API
+  const [liveTeam, setLiveTeam] = React.useState<TeamMember[] | null>(null);
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiProjects.getTeam(projectId).then(setLiveTeam).catch(() => {});
+  }, [projectId]);
 
   const handleCreateProduction = async () => {
     if (!newProdName.trim()) { toast.error("Enter a production name."); return; }
     setCreating(true);
     try {
-      await apiProjects.create({ name: newProdName });
-      toast.success(`"${newProdName}" workspace created!`);
+      const p = await apiProjects.create({ name: newProdName });
+      toast.success(`"${p.name}" workspace created!`);
     } catch {
-      toast.success(`"${newProdName}" workspace created!`);
+      toast.error("Could not create production — is the backend running?");
     } finally {
       setCreating(false);
       setNewProdName("");
@@ -854,10 +865,14 @@ function ProducerOverview({ productionName, onAIAction, projectId, userName }: {
     }
   };
 
+  const statsIssues = liveRecs?.length ?? 0;
+  const statsCritical = liveRecs?.filter((r) => r.severity === "critical").length ?? 0;
+
+  const isLive = !!(overview || liveRecs || liveProjects);
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={`Good morning, ${userName ? userName.split(" ")[0] : "there"}.`}
+        title={<span className="inline-flex items-center gap-2">{`Good morning, ${userName ? userName.split(" ")[0] : "there"}.`} <DataSourceBadge live={isLive} /></span>}
         subtitle={`Production intelligence summary for ${productionName}.`}
         actions={<>
           <Btn variant="secondary" icon={Download} onClick={() => {
@@ -885,45 +900,49 @@ function ProducerOverview({ productionName, onAIAction, projectId, userName }: {
         </div>
       )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Active Productions" value={3} icon={Film} color="var(--verse-midnight)" />
-        <StatCard label="Scenes Logged" value="34/47" subtext="72% complete" icon={FileText} color="var(--verse-emerald)" />
-        <StatCard label="Continuity Issues" value={4} subtext="2 critical" icon={AlertTriangle} color="var(--verse-red)" />
-        <StatCard label="Team Members" value={12} subtext="8 active today" icon={Users} color="var(--verse-violet)" />
+        <StatCard label="Active Productions" value={liveProjects?.length ?? "—"} icon={Film} color="var(--verse-midnight)" />
+        <StatCard
+          label="Scenes Logged"
+          value={overview ? `${overview.scenes_shot}/${overview.scenes_total}` : "—"}
+          subtext={overview ? `${overview.scenes_total > 0 ? Math.round((overview.scenes_shot / overview.scenes_total) * 100) : 0}% complete` : "Upload a screenplay"}
+          icon={FileText}
+          color="var(--verse-emerald)"
+        />
+        <StatCard
+          label="Continuity Issues"
+          value={statsIssues || "—"}
+          subtext={statsCritical > 0 ? `${statsCritical} critical` : statsIssues > 0 ? "all low/medium" : "Upload screenplay"}
+          icon={AlertTriangle}
+          color="var(--verse-red)"
+        />
+        <StatCard
+          label="Team Members"
+          value={liveTeam?.length ?? "—"}
+          subtext={liveTeam ? `${liveTeam.filter((m) => m.status === "accepted").length} active` : undefined}
+          icon={Users}
+          color="var(--verse-violet)"
+        />
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+      {/* Active projects from the API */}
+      {liveProjects && liveProjects.length > 0 && (
         <Card>
-          <SectionTitle><span>Continuity Health</span></SectionTitle>
-          <p className="text-xs text-muted-foreground mb-2">Semantic accuracy score</p>
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-4xl font-black" style={{ fontFamily: "var(--font-display)", color: "var(--verse-gold)" }}>94%</span>
-            <span className="text-xs text-muted-foreground">↑ 2% this week</span>
-          </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <RadarChart data={continuityHealthData}>
-              <PolarGrid key="polar-grid" stroke="#D9D5F2" />
-              <PolarAngleAxis key="polar-angle" dataKey="subject" tick={{ fontSize: 10, fill: "#5A6A85" }} />
-              <Radar key="radar-score" name="Score" dataKey="score" stroke="var(--verse-midnight)" fill="var(--verse-midnight)" fillOpacity={0.12} strokeWidth={2} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card className="lg:col-span-2">
           <SectionTitle action={<button className="text-xs text-primary font-semibold hover:underline" onClick={() => toast.info("Opening all productions…")}>View all</button>}>Active Productions</SectionTitle>
           <div className="flex flex-col gap-3">
-            {mockProductions.map((prod) => {
-              // "Development" entry added — was missing, causing that status to silently fall back to grey.
-              const sc = { Development: { c: "var(--verse-violet)", bg: "#F3F0FF" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[prod.status] || { c: "#64748B", bg: "#F1F3F7" };
+            {liveProjects.map((proj) => {
+              const sc = { Development: { c: "var(--verse-violet)", bg: "#F3F0FF" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[proj.status] || { c: "#64748B", bg: "#F1F3F7" };
               return (
-                <div key={prod.id} className="flex items-center gap-3 p-3 rounded-xl border hover:shadow-sm transition-all cursor-pointer" style={{ borderColor: "var(--border)" }} onClick={() => toast.info(`Opening ${prod.title}…`)}>
+                <div key={proj.id} className="flex items-center gap-3 p-3 rounded-xl border hover:shadow-sm transition-all cursor-pointer" style={{ borderColor: "var(--border)" }} onClick={() => toast.info(`Opening ${proj.name}…`)}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-semibold text-foreground truncate" style={{ fontFamily: "var(--font-display)" }}>{prod.title}</p>
-                      <StatusBadge label={prod.status} color={sc.c} bg={sc.bg} />
+                      <p className="text-sm font-semibold text-foreground truncate" style={{ fontFamily: "var(--font-display)" }}>{proj.name}</p>
+                      <StatusBadge label={proj.status} color={sc.c} bg={sc.bg} />
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
-                      <span>{prod.type}</span><span>·</span><span>{prod.scenesLogged}/{prod.scenesTotal} scenes</span>
-                      <span>·</span><ScorePill value={prod.continuityScore} />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{proj.production_type || "Film"}</span><span>·</span>
+                      <span>{proj.scenes_total} scenes</span><span>·</span>
+                      <span>{proj.facts_count} facts</span>
                     </div>
-                    <ProgressBar value={(prod.scenesLogged / prod.scenesTotal) * 100} color={sc.c} />
                   </div>
                   <ChevronRight size={13} className="text-muted-foreground flex-shrink-0" />
                 </div>
@@ -931,74 +950,89 @@ function ProducerOverview({ productionName, onAIAction, projectId, userName }: {
             })}
           </div>
         </Card>
-      </div>
-      <Card>
-        <SectionTitle>Scene Logging Progress</SectionTitle>
-        <ResponsiveContainer width="100%" height={150}>
-          <BarChart data={sceneTimelineData} barGap={4}>
-            <CartesianGrid key="bar-grid" strokeDasharray="3 3" stroke="#F1F3F7" />
-            <XAxis key="bar-x" dataKey="week" tick={{ fontSize: 11, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
-            <YAxis key="bar-y" tick={{ fontSize: 11, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
-            <Tooltip key="bar-tooltip" contentStyle={{ borderRadius: 12, border: "1px solid #D9D5F2", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }} />
-            <Bar key="bar-total" dataKey="total" fill="#E8E5FF" radius={[4, 4, 0, 0]} name="Planned" />
-            <Bar key="bar-logged" dataKey="logged" fill="var(--verse-midnight)" radius={[4, 4, 0, 0]} name="Logged" />
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
+      )}
+
+      {/* Scene progress from the engine */}
+      {overview && overview.scenes_total > 0 && (
+        <Card>
+          <SectionTitle>Scene Progress</SectionTitle>
+          <div className="flex items-center gap-4 mb-2">
+            <div className="flex-1"><ProgressBar value={(overview.scenes_shot / overview.scenes_total) * 100} color="var(--verse-midnight)" /></div>
+            <span className="text-sm font-bold text-muted-foreground">{overview.scenes_shot}/{overview.scenes_total} shot</span>
+          </div>
+          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground mt-2">
+            <span><span className="font-bold text-foreground">{overview.scenes_clean}</span> clean</span>
+            <span><span className="font-bold text-foreground">{overview.issues_total}</span> open issues</span>
+            <span>avg score <span className="font-bold text-foreground">{overview.average_scene_score}%</span></span>
+            <span><span className="font-bold text-foreground">{overview.facts}</span> facts</span>
+          </div>
+        </Card>
+      )}
+
+      {/* AI Recommendations from the engine */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div>
-          {/* AI Recommendations — live from the continuity engine when online,
-              falling back to mock data in demo mode */}
-          <SectionTitle><span>AI Recommendations <VioletBadge>{displayRecs.length} new</VioletBadge></span></SectionTitle>
-          <div className="flex flex-col gap-3">
-            {displayRecs.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
-          </div>
+          <SectionTitle>
+            <span>AI Recommendations {liveRecs && liveRecs.length > 0 && <VioletBadge>{liveRecs.length} new</VioletBadge>}</span>
+          </SectionTitle>
+          {liveRecs && liveRecs.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {liveRecs.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
+            </div>
+          ) : (
+            <EmptyState icon={Brain} title="No issues yet" description="Upload a screenplay to generate AI continuity recommendations." />
+          )}
         </div>
         <div>
-          <SectionTitle action={<Btn variant="ghost" onClick={() => toast.info("Opening team management…")}>Manage</Btn>}>Team Activity</SectionTitle>
-          <Card>
-            <div className="flex flex-col gap-3">
-              {teamMembers.map((member) => {
-                const sc = { online: "var(--verse-emerald)", away: "var(--verse-gold)", offline: "#CBD5E1" }[member.status];
-                return (
+          <SectionTitle action={<Btn variant="ghost" onClick={() => toast.info("Opening team management…")}>Manage</Btn>}>Team</SectionTitle>
+          {liveTeam && liveTeam.length > 0 ? (
+            <Card>
+              <div className="flex flex-col gap-3">
+                {liveTeam.slice(0, 6).map((member) => (
                   <div key={member.id} className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="w-9 h-9 rounded-full text-primary text-sm font-bold flex items-center justify-center" style={{ backgroundColor: "var(--verse-midnight-light)" }}>{member.avatar}</div>
-                      <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white" style={{ backgroundColor: sc }} />
+                    <div className="w-9 h-9 rounded-full text-primary text-sm font-bold flex items-center justify-center" style={{ backgroundColor: "var(--verse-midnight-light)" }}>
+                      {member.email.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground">{member.name}</p>
+                      <p className="text-sm font-semibold text-foreground truncate">{member.email}</p>
                       <p className="text-xs text-muted-foreground">{member.role}</p>
                     </div>
-                    <span className="text-xs text-muted-foreground">{member.lastActive}</span>
+                    <StatusBadge label={member.status} color={member.status === "accepted" ? "var(--verse-emerald)" : "var(--verse-gold)"} bg={member.status === "accepted" ? "#ECFDF5" : "var(--verse-gold-light)"} />
                   </div>
-                );
-              })}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+          ) : (
+            <EmptyState icon={Users} title="No team members yet" description="Invite colleagues to collaborate on this production." action={<Btn variant="primary" icon={Plus} onClick={() => toast.info("Opening invite…")}>Invite Member</Btn>} />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-const allProductions = [
-  { id: "p1", title: "The Last Scene", type: "Feature Film", status: "In Production", scenes: "34/47", score: 94, director: "James K.", budget: "$4.2M", days: 23 },
-  { id: "p2", title: "Neon District", type: "TV Series", status: "Pre-Production", scenes: "0/62", score: 100, director: "Sarah M.", budget: "$12M", days: 45 },
-  { id: "p3", title: "The Witness", type: "Documentary", status: "Post-Production", scenes: "18/18", score: 88, director: "Tom R.", budget: "$800K", days: 0 },
-  { id: "p4", title: "Echoes", type: "Short Film", status: "Completed", scenes: "12/12", score: 99, director: "Lisa P.", budget: "$120K", days: 0 },
-];
-
 function ProducerProductions() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
-  // "Development" added as the first lifecycle filter — was missing from the bar.
+  const [liveProjects, setLiveProjects] = React.useState<Project[] | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    apiProjects.list()
+      .then(setLiveProjects)
+      .catch(() => setLiveProjects([]))
+      .finally(() => setLoading(false));
+  }, []);
+
   const filters = ["All", "Development", "Pre-Production", "In Production", "Post-Production", "Completed"];
-  const filtered = allProductions.filter((p) => (filter === "All" || p.status === filter) && p.title.toLowerCase().includes(search.toLowerCase()));
+  const filtered = (liveProjects ?? []).filter((p) =>
+    (filter === "All" || p.status === filter) &&
+    p.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Productions" subtitle="Manage all active and upcoming productions." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New production created!")}>New Production</Btn>} />
+      <PageHeader title="Productions" subtitle="Manage all active and upcoming productions." actions={<Btn variant="primary" icon={Plus} onClick={() => toast.info("Use the New Production button on Overview.")}>New Production</Btn>} />
       <div className="flex flex-wrap items-center gap-3">
         <SearchBox placeholder="Search productions…" value={search} onChange={setSearch} />
         <div className="flex items-center gap-1">
@@ -1007,69 +1041,83 @@ function ProducerProductions() {
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map((prod) => {
-          // "Development" entry added — was missing, causing that status to silently fall back to grey.
-          const sc = { Development: { c: "var(--verse-violet)", bg: "#F3F0FF" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[prod.status] || { c: "#64748B", bg: "#F1F3F7" };
-          return (
-            <Card key={prod.id}>
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>{prod.title}</h3>
-                  <p className="text-xs text-muted-foreground">{prod.type}</p>
-                </div>
-                <StatusBadge label={prod.status} color={sc.c} bg={sc.bg} />
-              </div>
-              <div className="grid grid-cols-3 gap-3 mb-4 text-center">
-                {[{ label: "Scenes", value: prod.scenes }, { label: "Score", value: `${prod.score}%` }, { label: "Days Left", value: prod.days || "Done" }].map((kpi) => (
-                  <div key={kpi.label} className="rounded-lg p-2" style={{ backgroundColor: "var(--muted)" }}>
-                    <p className="text-sm font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>{kpi.value}</p>
-                    <p className="text-xs text-muted-foreground">{kpi.label}</p>
+      {loading ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">Loading productions…</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filtered.map((proj) => {
+            const sc = { Development: { c: "var(--verse-violet)", bg: "#F3F0FF" }, "Pre-Production": { c: "var(--verse-gold)", bg: "var(--verse-gold-light)" }, "In Production": { c: "var(--verse-emerald)", bg: "#ECFDF5" }, "Post-Production": { c: "#0F62FE", bg: "#EFF6FF" }, Completed: { c: "#64748B", bg: "#F1F3F7" } }[proj.status] || { c: "#64748B", bg: "#F1F3F7" };
+            return (
+              <Card key={proj.id}>
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>{proj.name}</h3>
+                    <p className="text-xs text-muted-foreground">{proj.production_type || "Film"}</p>
                   </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
-                <Users size={12} /><span>{prod.director}</span><span>·</span><span>{prod.budget}</span>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => toast.info(`Opening ${prod.title} workspace…`)} className="flex-1 h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>Open Workspace</button>
-                <button onClick={() => toast.info("Opening analytics…")} className="h-8 w-8 rounded-lg flex items-center justify-center border hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }}><BarChart3 size={13} className="text-muted-foreground" /></button>
-              </div>
-            </Card>
-          );
-        })}
-        {filtered.length === 0 && <div className="col-span-2"><EmptyState icon={Film} title="No productions found" description="Try adjusting your search or filters." /></div>}
-      </div>
+                  <StatusBadge label={proj.status} color={sc.c} bg={sc.bg} />
+                </div>
+                <div className="grid grid-cols-3 gap-3 mb-4 text-center">
+                  {[{ label: "Scenes", value: proj.scenes_total }, { label: "Facts", value: proj.facts_count }, { label: "Entities", value: proj.entities_count }].map((kpi) => (
+                    <div key={kpi.label} className="rounded-lg p-2" style={{ backgroundColor: "var(--muted)" }}>
+                      <p className="text-sm font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>{kpi.value}</p>
+                      <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                    </div>
+                  ))}
+                </div>
+                {proj.description && <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{proj.description}</p>}
+                <div className="flex gap-2">
+                  <button onClick={() => toast.info(`Opening ${proj.name} workspace…`)} className="flex-1 h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>Open Workspace</button>
+                  <button onClick={() => toast.info("Opening analytics…")} className="h-8 w-8 rounded-lg flex items-center justify-center border hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }}><BarChart3 size={13} className="text-muted-foreground" /></button>
+                </div>
+              </Card>
+            );
+          })}
+          {filtered.length === 0 && !loading && (
+            <div className="col-span-2">
+              <EmptyState icon={Film} title="No productions yet" description="Create your first production from the Overview page." />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function ProducerTeam() {
-  const extended = [
-    ...teamMembers,
-    { id: "t5", name: "Carlos Mendez", role: "Gaffer", status: "online" as const, lastActive: "Now", avatar: "CM" },
-    { id: "t6", name: "Amy Foster", role: "2nd AD", status: "offline" as const, lastActive: "3h ago", avatar: "AF" },
-  ];
+  const [liveTeam, setLiveTeam] = React.useState<TeamMember[] | null>(null);
+  const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = useState("");
-  const filtered = extended.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()) || m.role.toLowerCase().includes(search.toLowerCase()));
-
   const [inviteEmail, setInviteEmail] = useState("");
   const [showInvite, setShowInvite] = useState(false);
   const [inviting, setInviting] = useState(false);
+
+  React.useEffect(() => {
+    apiProjects.list()
+      .then((projects) => projects[0] ? apiProjects.getTeam(projects[0].id) : Promise.resolve([]))
+      .then(setLiveTeam)
+      .catch(() => setLiveTeam([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = (liveTeam ?? []).filter((m) =>
+    m.email.toLowerCase().includes(search.toLowerCase()) ||
+    m.role.toLowerCase().includes(search.toLowerCase())
+  );
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) { toast.error("Enter an email address."); return; }
     setInviting(true);
     try {
-      // Get the first project from the API; fall back to demo if unavailable
       const projectList = await apiProjects.list().catch(() => []);
       const projectId = projectList[0]?.id;
       if (projectId) {
         await apiProjects.inviteMember(projectId, inviteEmail);
+        toast.success(`Invite sent to ${inviteEmail}!`);
+      } else {
+        toast.error("Create a project first before inviting team members.");
       }
-      toast.success(`Invite sent to ${inviteEmail}!`);
     } catch {
-      toast.success(`Invite sent to ${inviteEmail}!`);
+      toast.error("Could not send invite — is the backend running?");
     } finally {
       setInviting(false);
       setInviteEmail("");
@@ -1079,23 +1127,11 @@ function ProducerTeam() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Team" subtitle="Manage your production team." actions={<>
-        <Btn variant="secondary" icon={Upload} onClick={() => { const input = document.createElement("input"); input.type = "file"; input.accept = ".csv,.xlsx"; input.onchange = () => toast.success("Team roster imported successfully."); input.click(); }}>Import</Btn>
-        <Btn variant="primary" icon={Plus} onClick={() => setShowInvite(true)}>Invite Member</Btn>
-      </>} />
+      <PageHeader title="Team" subtitle="Manage your production team." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowInvite(true)}>Invite Member</Btn>} />
       {showInvite && (
         <div className="rounded-2xl border p-5 flex flex-col gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
           <p className="text-sm font-bold text-foreground">Invite Team Member</p>
-          <input
-            type="email"
-            placeholder="colleague@studio.com"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleInvite()}
-            className="h-10 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25"
-            style={{ borderColor: "var(--border)" }}
-            autoFocus
-          />
+          <input type="email" placeholder="colleague@studio.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleInvite()} className="h-10 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25" style={{ borderColor: "var(--border)" }} autoFocus />
           <div className="flex gap-2">
             <Btn variant="primary" onClick={handleInvite}>{inviting ? "Sending…" : "Send Invite"}</Btn>
             <Btn variant="secondary" onClick={() => { setShowInvite(false); setInviteEmail(""); }}>Cancel</Btn>
@@ -1104,81 +1140,68 @@ function ProducerTeam() {
       )}
       <div className="flex items-center gap-3">
         <SearchBox placeholder="Search team…" value={search} onChange={setSearch} />
-        <div className="flex items-center gap-1.5 ml-auto text-xs text-muted-foreground">
-          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--verse-emerald)" }} />{extended.filter((m) => m.status === "online").length} online
+      </div>
+      {loading ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">Loading team…</div>
+      ) : filtered.length === 0 ? (
+        <EmptyState icon={Users} title="No team members yet" description="Invite colleagues to collaborate on this production." action={<Btn variant="primary" icon={Plus} onClick={() => setShowInvite(true)}>Invite Member</Btn>} />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((member) => {
+            const statusColor = member.status === "accepted" ? "var(--verse-emerald)" : "var(--verse-gold)";
+            return (
+              <Card key={member.id}>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl text-primary text-base font-black flex items-center justify-center" style={{ backgroundColor: "var(--verse-midnight-light)", fontFamily: "var(--font-display)" }}>
+                    {member.email.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-foreground truncate">{member.email}</p>
+                    <p className="text-xs text-muted-foreground">{member.role}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
+                  <StatusBadge label={member.status} color={statusColor} bg={`color-mix(in srgb, ${statusColor} 12%, white)`} />
+                  <span>Joined {new Date(member.joined_at).toLocaleDateString()}</span>
+                </div>
+                <button className="w-full h-7 text-xs font-medium rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.info(`Viewing ${member.email}'s profile.`)}>Profile</button>
+              </Card>
+            );
+          })}
         </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((member) => {
-          const sc = { online: { c: "var(--verse-emerald)", label: "Online" }, away: { c: "var(--verse-gold)", label: "Away" }, offline: { c: "#CBD5E1", label: "Offline" } }[member.status];
-          return (
-            <Card key={member.id}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="relative">
-                  <div className="w-12 h-12 rounded-xl text-primary text-base font-black flex items-center justify-center" style={{ backgroundColor: "var(--verse-midnight-light)", fontFamily: "var(--font-display)" }}>{member.avatar}</div>
-                  <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" style={{ backgroundColor: sc.c }} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-bold text-foreground">{member.name}</p>
-                  <p className="text-xs text-muted-foreground">{member.role}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
-                <StatusBadge label={sc.label} color={sc.c} bg={`color-mix(in srgb, ${sc.c} 12%, white)`} />
-                <span>Active {member.lastActive}</span>
-              </div>
-              <div className="flex gap-2">
-                <button className="flex-1 h-7 text-xs font-medium rounded-lg border hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }} onClick={() => toast.success(`Message sent to ${member.name}.`)}>Message</button>
-                <button className="flex-1 h-7 text-xs font-medium rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.info(`Viewing ${member.name}'s profile.`)}>Profile</button>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      )}
     </div>
   );
 }
-
-const reports = [
-  { id: "r1", title: "Weekly Continuity Summary", date: "Dec 12, 2024", severity: "info", scenes: 7, issues: 2, score: 94 },
-  { id: "r2", title: "Scene 18 Timeline Alert", date: "Dec 11, 2024", severity: "critical", scenes: 1, issues: 1, score: 72 },
-  { id: "r3", title: "Costume Continuity Report", date: "Dec 10, 2024", severity: "warning", scenes: 5, issues: 3, score: 81 },
-  { id: "r4", title: "AI Semantic Analysis #14", date: "Dec 9, 2024", severity: "info", scenes: 12, issues: 0, score: 99 },
-];
 
 function ProducerContinuityReports({ projectId }: { projectId?: string }) {
   const [filter, setFilter] = useState("All");
   const [isRunning, setIsRunning] = useState(false);
   const [liveReport, setLiveReport] = useState<{ score: number; issueCount: number } | null>(null);
-  // Live report entries derived from GET /continuity/issues/{project_id}
-  const [liveReportRows, setLiveReportRows] = React.useState<typeof reports | null>(null);
+  const [liveReportRows, setLiveReportRows] = React.useState<Array<{
+    id: string; title: string; date: string; severity: string; scenes: number; issues: number; score: number;
+  }> | null>(null);
 
   const sev = { critical: { c: "var(--verse-red)", bg: "#FEF2F2", l: "Critical" }, warning: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)", l: "Warning" }, info: { c: "#0F62FE", bg: "#EFF6FF", l: "Info" } };
+  const filtered = (liveReportRows ?? []).filter((r) => filter === "All" || r.severity === filter.toLowerCase());
 
-  // Use live rows when available; otherwise fall back to the static mock array
-  const baseReports = liveReportRows ?? reports;
-  const filtered = baseReports.filter((r) => filter === "All" || r.severity === filter.toLowerCase());
-
-  // Fetch existing issues from the engine on mount (non-blocking)
   React.useEffect(() => {
     if (!projectId) return;
-    import("@/app/lib/api").then(({ continuity, toDisplaySeverity }) => {
-      continuity.issues(projectId).then((issues) => {
-        if (!issues.length) return;
-        const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-        setLiveReportRows(
-          issues.slice(0, 10).map((issue, i) => ({
-            id: issue.issue_id,
-            title: issue.explanation || issue.attribute || `Issue #${i + 1}`,
-            date: now,
-            severity: toDisplaySeverity(issue.severity),
-            scenes: issue.related_scene_ids?.length ?? 1,
-            issues: 1,
-            score: Math.round(100 - (issue.score_impact ?? 0) * 100),
-          }))
-        );
-      }).catch(() => {}); // backend offline — keep mock
-    });
+    apiContinuity.issues(projectId).then((issues) => {
+      if (!issues.length) return;
+      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      setLiveReportRows(
+        issues.slice(0, 10).map((issue, i) => ({
+          id: issue.issue_id,
+          title: issue.explanation || issue.attribute || `Issue #${i + 1}`,
+          date: now,
+          severity: toDisplaySeverity(issue.severity),
+          scenes: issue.related_scene_ids?.length ?? 1,
+          issues: 1,
+          score: Math.round(100 - (issue.score_impact ?? 0) * 100),
+        }))
+      );
+    }).catch(() => {});
   }, [projectId]);
 
   const handleRunAnalysis = async () => {
@@ -1201,7 +1224,7 @@ function ProducerContinuityReports({ projectId }: { projectId?: string }) {
       );
       toast.success(`Analysis complete — score ${Math.round(report.overall_score)}%, ${report.issues.length} issue(s) found.`);
     } catch {
-      toast.promise(new Promise<void>((resolve) => setTimeout(resolve, 1200)), { loading: "Running AI analysis…", success: "Analysis complete. Report generated.", error: "Analysis failed." });
+      toast.error("Analysis failed — upload a screenplay first.");
     } finally {
       setIsRunning(false);
     }
@@ -1221,123 +1244,132 @@ function ProducerContinuityReports({ projectId }: { projectId?: string }) {
           <button key={f} onClick={() => setFilter(f)} className={`h-8 text-xs font-semibold px-3 rounded-lg transition-all ${filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>{f}</button>
         ))}
       </div>
-      <div className="flex flex-col gap-3">
-        {filtered.map((r) => {
-          const s = sev[r.severity as keyof typeof sev];
-          return (
-            <Card key={r.id}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <StatusBadge label={s.l} color={s.c} bg={s.bg} />
-                    <h3 className="text-sm font-bold text-foreground">{r.title}</h3>
+      {filtered.length === 0 ? (
+        <EmptyState icon={FileText} title="No reports yet" description="Upload a screenplay and run analysis to generate continuity reports." action={<Btn variant="primary" icon={RefreshCw} onClick={handleRunAnalysis}>Run Analysis</Btn>} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {filtered.map((r) => {
+            const s = sev[r.severity as keyof typeof sev];
+            return (
+              <Card key={r.id}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <StatusBadge label={s.l} color={s.c} bg={s.bg} />
+                      <h3 className="text-sm font-bold text-foreground">{r.title}</h3>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{r.date} · {r.scenes} scenes reviewed · {r.issues} issue{r.issues !== 1 ? "s" : ""} found</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">{r.date} · {r.scenes} scenes reviewed · {r.issues} issue{r.issues !== 1 ? "s" : ""} found</p>
+                  <div className="text-right flex-shrink-0">
+                    <ScorePill value={r.score} />
+                    <p className="text-xs text-muted-foreground mt-0.5">score</p>
+                  </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <ScorePill value={r.score} />
-                  <p className="text-xs text-muted-foreground mt-0.5">score</p>
+                <div className="flex gap-2 mt-4">
+                  <button className="text-xs font-medium text-primary hover:underline" onClick={() => toast.info(`Viewing: ${r.title}`)}>View Report →</button>
+                  <button className="text-xs font-medium text-muted-foreground hover:text-foreground ml-auto" onClick={() => toast.promise(new Promise((res) => setTimeout(res, 800)), { loading: "Generating PDF…", success: `${r.title}.pdf ready.`, error: "Download failed." })}><Download size={12} className="inline mr-1" />PDF</button>
                 </div>
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button className="text-xs font-medium text-primary hover:underline" onClick={() => toast.info(`Viewing: ${r.title}`)}>View Report →</button>
-                <button className="text-xs font-medium text-muted-foreground hover:text-foreground ml-auto" onClick={() => toast.promise(new Promise((res) => setTimeout(res, 800)), { loading: "Generating PDF…", success: `${r.title}.pdf ready.`, error: "Download failed." })}><Download size={12} className="inline mr-1" />PDF</button>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-const analyticsData = [
-  { week: "W1", issues: 8, resolved: 5, score: 88 },
-  { week: "W2", issues: 6, resolved: 6, score: 91 },
-  { week: "W3", issues: 4, resolved: 4, score: 93 },
-  { week: "W4", issues: 4, resolved: 2, score: 94 },
-];
+function ProducerAnalytics({ projectId }: { projectId?: string }) {
+  const { overview, scenes } = useSceneViews(projectId ?? null);
+  const [liveIssues, setLiveIssues] = React.useState<Array<{ severity: string; status: string }> | null>(null);
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiContinuity.issues(projectId).then((issues) => setLiveIssues(issues as any)).catch(() => {});
+  }, [projectId]);
 
-function ProducerAnalytics() {
+  const avgScore = overview?.average_scene_score ?? null;
+  const totalIssues = liveIssues?.length ?? null;
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Analytics" subtitle="Production-wide performance metrics and trends." actions={<><Btn variant="secondary" icon={Download} onClick={() => toast.info("Exporting analytics…")}>Export</Btn><Btn variant="secondary" icon={Filter} onClick={() => toast.info("Opening filters…")}>Filter</Btn></>} />
+      <PageHeader title="Analytics" subtitle="Production-wide performance metrics and trends." actions={<Btn variant="secondary" icon={Download} onClick={() => toast.info("Exporting analytics…")}>Export</Btn>} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Avg. Continuity Score" value="94%" icon={TrendingUp} color="var(--verse-emerald)" />
-        <StatCard label="Issues Resolved" value="17/21" subtext="81% resolution rate" icon={CheckCircle} color="var(--verse-midnight)" />
-        <StatCard label="AI Accuracy" value="97.2%" icon={Brain} color="var(--verse-violet)" />
-        <StatCard label="Production Velocity" value="+12%" subtext="vs last month" icon={Zap} color="var(--verse-gold)" />
+        <StatCard label="Avg. Continuity Score" value={avgScore != null ? `${avgScore}%` : "—"} icon={TrendingUp} color="var(--verse-emerald)" />
+        <StatCard label="Total Issues" value={totalIssues ?? "—"} icon={AlertTriangle} color="var(--verse-red)" />
+        <StatCard label="Scenes in Engine" value={overview?.scenes_total ?? "—"} icon={Film} color="var(--verse-violet)" />
+        <StatCard label="Semantic Facts" value={overview?.facts ?? "—"} icon={Brain} color="var(--verse-gold)" />
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {scenes.length > 0 ? (
         <Card>
-          <SectionTitle>Continuity Score Over Time</SectionTitle>
-          <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={analyticsData}>
-              <CartesianGrid key="line-grid" strokeDasharray="3 3" stroke="#E8E5FF" />
-              <XAxis key="line-x" dataKey="week" tick={{ fontSize: 11, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
-              <YAxis key="line-y" domain={[85, 100]} tick={{ fontSize: 11, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
-              <Tooltip key="line-tooltip" contentStyle={{ borderRadius: 12, border: "1px solid #D9D5F2" }} />
-              <Line key="line-score" type="monotone" dataKey="score" stroke="var(--verse-midnight)" strokeWidth={2} dot={{ fill: "var(--verse-midnight)", r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card>
-          <SectionTitle>Issues vs Resolved</SectionTitle>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={analyticsData} barGap={4}>
-              <CartesianGrid key="issues-grid" strokeDasharray="3 3" stroke="#E8E5FF" />
-              <XAxis key="issues-x" dataKey="week" tick={{ fontSize: 11, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
-              <YAxis key="issues-y" tick={{ fontSize: 11, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
-              <Tooltip key="issues-tooltip" contentStyle={{ borderRadius: 12, border: "1px solid #D9D5F2" }} />
-              <Bar key="issues-bar" dataKey="issues" fill="#FEE2E2" radius={[4, 4, 0, 0]} name="Issues" />
-              <Bar key="resolved-bar" dataKey="resolved" fill="var(--verse-emerald)" radius={[4, 4, 0, 0]} name="Resolved" />
+          <SectionTitle>Scene Continuity Scores</SectionTitle>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={scenes.slice(0, 20).map((s) => ({ name: s.scene_id.replace("SCENE_", "S"), score: Math.round(s.score), issues: s.issue_count }))}>
+              <CartesianGrid key="bar-grid" strokeDasharray="3 3" stroke="#E8E5FF" />
+              <XAxis key="bar-x" dataKey="name" tick={{ fontSize: 10, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
+              <YAxis key="bar-y" domain={[0, 100]} tick={{ fontSize: 10, fill: "#5A6A85" }} axisLine={false} tickLine={false} />
+              <Tooltip key="bar-tooltip" contentStyle={{ borderRadius: 12, border: "1px solid #D9D5F2" }} />
+              <Bar key="bar-score" dataKey="score" fill="var(--verse-midnight)" radius={[4, 4, 0, 0]} name="Score" />
+              <Bar key="bar-issues" dataKey="issues" fill="#FEE2E2" radius={[4, 4, 0, 0]} name="Issues" />
             </BarChart>
           </ResponsiveContainer>
         </Card>
-      </div>
-      <Card>
-        <SectionTitle>Production Performance by Department</SectionTitle>
-        <div className="flex flex-col gap-3">
-          {[
-            { dept: "Script Supervision", score: 97, color: "var(--verse-midnight)" },
-            { dept: "Costume & Wardrobe", score: 91, color: "var(--verse-violet)" },
-            { dept: "Props & Set Dressing", score: 88, color: "var(--verse-gold)" },
-            { dept: "Camera & Lighting", score: 95, color: "#0F62FE" },
-          ].map((d) => (
-            <div key={d.dept} className="flex items-center gap-4">
-              <p className="text-sm text-foreground w-44 flex-shrink-0">{d.dept}</p>
-              <div className="flex-1"><ProgressBar value={d.score} color={d.color} /></div>
-              <ScorePill value={d.score} />
-            </div>
-          ))}
-        </div>
-      </Card>
+      ) : (
+        <EmptyState icon={BarChart3} title="No data yet" description="Upload a screenplay to populate analytics." />
+      )}
     </div>
   );
 }
 
-function ProducerAIInsights() {
+function ProducerAIInsights({ projectId }: { projectId?: string }) {
   const [dismissed, setDismissed] = useState<string[]>([]);
-  const insights = [
-    { id: "i1", type: "Pattern", title: "Costume inconsistency pattern detected", body: "VERSE identified a recurring costume color-continuity issue across 3 scenes involving the lead character during interior night shots.", confidence: 94, impact: "High" },
-    { id: "i2", type: "Prediction", title: "Scene 34–36 likely to require re-shoot", body: "Based on current prop tracking data, 3 props referenced in the screenplay are logged differently across these scenes.", confidence: 87, impact: "Medium" },
-    { id: "i3", type: "Opportunity", title: "Batch filming opportunity identified", body: "5 scenes share the same location and character configuration. Scheduling them consecutively could reduce setup time by ~40%.", confidence: 91, impact: "High" },
-    { id: "i4", type: "Anomaly", title: "Timeline anomaly in Act 2", body: "Scene 22 references a story event 3 days after Scene 18, but the 48-hour production schedule makes this continuity impossible.", confidence: 99, impact: "Critical" },
-  ];
+  const [liveInsights, setLiveInsights] = React.useState<Array<{
+    id: string; type: string; title: string; body: string; confidence: number; impact: string;
+  }> | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const loadInsights = React.useCallback(async () => {
+    if (!projectId) return;
+    setIsRunning(true);
+    try {
+      const report = await apiContinuity.analyse(projectId);
+      const sev = (s: string) => s === "critical" ? "Critical" : s === "high" ? "High" : s === "medium" ? "Medium" : "Low";
+      const typeOf = (i: any): string => {
+        if (i.category === "costume" || i.category === "prop") return "Pattern";
+        if (i.category === "timeline") return "Anomaly";
+        if (i.severity === "low") return "Opportunity";
+        return "Prediction";
+      };
+      setLiveInsights(
+        report.issues.slice(0, 8).map((i) => ({
+          id: i.issue_id,
+          type: typeOf(i),
+          title: i.explanation || `${i.category}: ${i.attribute}`,
+          body: i.suggested_fix || i.explanation || "Review this scene with your continuity supervisor.",
+          confidence: Math.round(i.confidence * 100),
+          impact: sev(i.severity),
+        }))
+      );
+    } catch {
+      toast.error("Upload a screenplay first to generate AI insights.");
+    } finally {
+      setIsRunning(false);
+    }
+  }, [projectId]);
+
   const colors = { Pattern: { c: "var(--verse-violet)", bg: "var(--verse-violet-light)" }, Prediction: { c: "#0F62FE", bg: "#EFF6FF" }, Opportunity: { c: "var(--verse-emerald)", bg: "#ECFDF5" }, Anomaly: { c: "var(--verse-red)", bg: "#FEF2F2" } };
-  const [isDeepRunning, setIsDeepRunning] = useState(false);
+
+  const visible = (liveInsights ?? []).filter((ins) => !dismissed.includes(ins.id));
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={<span>AI <span style={{ color: "var(--verse-violet)" }}>Insights</span></span>} subtitle="IBM watsonx-powered semantic analysis of your production." actions={
-        <Btn variant="primary" icon={Sparkles} onClick={() => {
-          if (isDeepRunning) return;
-          setIsDeepRunning(true);
-          toast.promise(new Promise<void>((resolve) => setTimeout(() => { setIsDeepRunning(false); resolve(); }, 2500)), { loading: "Running deep semantic analysis…", success: "Deep analysis complete. 4 new insights generated.", error: "Analysis failed." });
-        }}>{isDeepRunning ? "Running…" : "Run Deep Analysis"}</Btn>
+      <PageHeader title={<span>AI <span style={{ color: "var(--verse-violet)" }}>Insights</span></span>} subtitle="IBM Granite-powered semantic analysis of your production." actions={
+        <Btn variant="primary" icon={Sparkles} onClick={loadInsights}>{isRunning ? "Running…" : "Run Deep Analysis"}</Btn>
       } />
       <div className="flex flex-col gap-4">
-        {insights.filter((ins) => !dismissed.includes(ins.id)).map((ins) => {
-          const s = colors[ins.type as keyof typeof colors];
+        {visible.length === 0 && !isRunning && (
+          <EmptyState icon={Sparkles} title="No insights yet" description="Click 'Run Deep Analysis' after uploading a screenplay to generate AI-powered insights." action={<Btn variant="primary" icon={Sparkles} onClick={loadInsights}>Run Deep Analysis</Btn>} />
+        )}
+        {visible.map((ins) => {
+          const s = colors[ins.type as keyof typeof colors] ?? colors.Prediction;
           return (
             <Card key={ins.id}>
               <div className="flex items-start gap-4">
@@ -1361,9 +1393,6 @@ function ProducerAIInsights() {
             </Card>
           );
         })}
-        {insights.filter((ins) => !dismissed.includes(ins.id)).length === 0 && (
-          <EmptyState icon={Sparkles} title="All insights reviewed" description="Run a new deep analysis to generate fresh insights." action={<Btn variant="primary" onClick={() => setDismissed([])}>Restore All</Btn>} />
-        )}
       </div>
     </div>
   );
@@ -1454,48 +1483,66 @@ function ProducerWorkspace() {
 // DIRECTOR PAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function DirectorOverview({ productionName, onAIAction }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void }) {
+function DirectorOverview({ productionName, onAIAction, projectId }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void; projectId?: string }) {
+  const { scenes: liveScenes, overview } = useSceneViews(projectId ?? null);
+  const { entities: liveEntities } = useEntityViews(projectId ?? null, { entityType: "character" });
+  const [liveRecs, setLiveRecs] = React.useState<Array<{ id: string; severity: "critical"|"warning"|"info"; scene: string; issue: string; confidence: number; suggestion: string; timestamp: string }> | null>(null);
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiContinuity.issues(projectId).then((issues) => {
+      if (!issues.length) return;
+      setLiveRecs(issues.slice(0, 3).map((i) => ({
+        id: i.issue_id, severity: toDisplaySeverity(i.severity),
+        scene: i.scene_id ?? "—", issue: i.explanation || i.attribute,
+        confidence: Math.round(i.confidence * 100),
+        suggestion: i.suggested_fix || "Review with your script supervisor.",
+        timestamp: "Just now",
+      })));
+    }).catch(() => {});
+  }, [projectId]);
+
+  const characterEntities = liveEntities ?? [];
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Director's View" subtitle={`Scene tracking and character continuity for ${productionName}.`} actions={<Btn variant="primary" icon={Sparkles} onClick={() => toast.loading("Running scene analysis…")}>Analyze Scenes</Btn>} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Scenes Directed" value="34" icon={Film} color="var(--verse-midnight)" />
-        <StatCard label="Characters Tracked" value={3} icon={Users} color="var(--verse-violet)" />
-        <StatCard label="AI Recommendations" value={3} icon={Sparkles} color="var(--verse-gold)" />
-        <StatCard label="Continuity Score" value="94%" icon={CheckCircle} color="var(--verse-emerald)" />
+        <StatCard label="Scenes" value={overview?.scenes_total ?? "—"} icon={Film} color="var(--verse-midnight)" />
+        <StatCard label="Characters Tracked" value={characterEntities.length || "—"} icon={Users} color="var(--verse-violet)" />
+        <StatCard label="AI Issues" value={liveRecs?.length ?? "—"} icon={Sparkles} color="var(--verse-gold)" />
+        <StatCard label="Continuity Score" value={overview?.average_scene_score != null ? `${overview.average_scene_score}%` : "—"} icon={CheckCircle} color="var(--verse-emerald)" />
       </div>
-      <Card>
-        <SectionTitle action={<Btn variant="ghost" onClick={() => toast.info("Opening character tracker…")}>View All →</Btn>}>Character Continuity Tracker</SectionTitle>
-        <div className="flex flex-col gap-4">
-          {characters.map((char) => (
-            <div key={char.id} className="p-4 border rounded-xl hover:border-primary/20 transition-colors" style={{ borderColor: "var(--border)" }}>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>{char.name}</h4>
-                    <StatusBadge label={char.type} color={char.type === "Lead" ? "var(--verse-midnight)" : "#64748B"} bg={char.type === "Lead" ? "var(--verse-midnight-light)" : "#F1F3F7"} />
+      {characterEntities.length > 0 ? (
+        <Card>
+          <SectionTitle>Character Continuity Tracker</SectionTitle>
+          <div className="flex flex-col gap-4">
+            {characterEntities.map((view) => {
+              const summary = summariseEntity(view);
+              return (
+                <div key={view.entity.key} className="p-4 border rounded-xl" style={{ borderColor: "var(--border)" }}>
+                  <div className="flex items-start justify-between mb-2">
+                    <h4 className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>{view.entity.name}</h4>
+                    {summary.continuity > 0 && (
+                      <p className="text-xl font-black" style={{ fontFamily: "var(--font-display)", color: summary.continuity >= 90 ? "var(--verse-emerald)" : "var(--verse-gold)" }}>{summary.continuity}%</p>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground">Played by {char.actor}</p>
+                  <p className="text-xs text-muted-foreground">Scenes: {summary.scenes || "—"} · {summary.slots.length} tracked attribute(s)</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-xl font-black" style={{ fontFamily: "var(--font-display)", color: char.continuityScore >= 90 ? "var(--verse-emerald)" : "var(--verse-gold)" }}>{char.continuityScore}%</p>
-                  <p className="text-xs text-muted-foreground">continuity</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div><p className="text-muted-foreground">Scenes</p><p className="font-semibold">{char.scenesIn}</p></div>
-                <div><p className="text-muted-foreground">Last scene</p><p className="font-semibold">{char.lastScene}</p></div>
-                <div className="col-span-2"><p className="text-muted-foreground">Current costume</p><p className="font-medium">{char.lastCostume}</p></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+              );
+            })}
+          </div>
+        </Card>
+      ) : (
+        <EmptyState icon={Users} title="No characters yet" description="Upload a screenplay to extract and track characters automatically." />
+      )}
       <div>
         <SectionTitle>AI Recommendations</SectionTitle>
-        <div className="flex flex-col gap-3">
-          {aiRecommendations.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
-        </div>
+        {liveRecs && liveRecs.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {liveRecs.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
+          </div>
+        ) : (
+          <EmptyState icon={Brain} title="No issues detected" description="Upload a screenplay and footage to generate AI continuity recommendations." />
+        )}
       </div>
     </div>
   );
@@ -1612,9 +1659,12 @@ function DirectorSceneTracking({ projectId }: { projectId?: string }) {
   );
 }
 
-function DirectorCharacters() {
+function DirectorCharacters({ projectId }: { projectId?: string }) {
+  const { entities: liveEntities, loading } = useEntityViews(projectId ?? null, { entityType: "character" });
   const [showAdd, setShowAdd] = useState(false);
   const [charName, setCharName] = useState("");
+  const characters = liveEntities ?? [];
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Characters" subtitle="Track character continuity and state across all scenes." actions={<Btn variant="primary" icon={Plus} onClick={() => setShowAdd(true)}>Add Character</Btn>} />
@@ -1625,52 +1675,48 @@ function DirectorCharacters() {
           <Btn variant="secondary" onClick={() => { setShowAdd(false); setCharName(""); }}>Cancel</Btn>
         </div>
       )}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {characters.map((char) => (
-          <Card key={char.id}>
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-14 h-14 rounded-2xl font-black flex items-center justify-center text-2xl" style={{ backgroundColor: "var(--verse-midnight-light)", fontFamily: "var(--font-display)" }}>
-                {char.name.split(" ").map((n: string) => n[0]).join("")}
-              </div>
-              <StatusBadge label={char.type} color={char.type === "Lead" ? "var(--verse-midnight)" : "#64748B"} bg={char.type === "Lead" ? "var(--verse-midnight-light)" : "#F1F3F7"} />
-            </div>
-            <h3 className="font-black text-foreground mb-0.5" style={{ fontFamily: "var(--font-display)" }}>{char.name}</h3>
-            <p className="text-xs text-muted-foreground mb-4">{char.actor}</p>
-            <div className="flex flex-col gap-2 text-xs mb-4">
-              {[{ label: "Scenes", val: char.scenesIn }, { label: "Last scene", val: char.lastScene }, { label: "Costume", val: char.lastCostume }].map((f) => (
-                <div key={f.label} className="flex items-start gap-2">
-                  <span className="text-muted-foreground w-20 flex-shrink-0">{f.label}</span>
-                  <span className="text-foreground font-medium flex-1">{f.val}</span>
+      {loading ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">Loading characters…</div>
+      ) : characters.length === 0 ? (
+        <EmptyState icon={Users} title="No characters yet" description="Upload a screenplay to extract characters automatically." />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {characters.map((view) => {
+            const summary = summariseEntity(view);
+            const wears = view.latest.wears ? String(view.latest.wears) : "—";
+            return (
+              <Card key={view.entity.key}>
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-14 h-14 rounded-2xl font-black flex items-center justify-center text-2xl" style={{ backgroundColor: "var(--verse-midnight-light)", fontFamily: "var(--font-display)" }}>
+                    {view.entity.name.split(" ").map((n: string) => n[0]).join("")}
+                  </div>
+                  <StatusBadge label={view.entity.type} color="var(--verse-midnight)" bg="var(--verse-midnight-light)" />
                 </div>
-              ))}
-            </div>
-            <div className="mb-3">
-              <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>Continuity</span><ScorePill value={char.continuityScore} /></div>
-              <ProgressBar value={char.continuityScore} color={char.continuityScore >= 90 ? "var(--verse-emerald)" : "var(--verse-gold)"} />
-            </div>
-            <button className="w-full h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.info(`Opening ${char.name} full profile…`)}>View Full Profile</button>
-          </Card>
-        ))}
-      </div>
-      <Card>
-        <SectionTitle>Character Appearance Notes</SectionTitle>
-        <p className="text-xs text-muted-foreground mb-3">AI-generated notes on character consistency across all logged scenes.</p>
-        <div className="flex flex-col gap-3">
-          {[
-            { char: "Elena Chen", note: "Costume colour confirmed consistent through Scenes 17–25. Hair continuity verified. Jewelry: gold bracelet present in all exterior shots.", score: 97 },
-            { char: "Marcus Reyes", note: "Watch (vintage Rolex) absent in shots 31B–31D — flagged for review. Jacket consistent throughout.", score: 89 },
-            { char: "Dr. Helena Park", note: "Lab coat continuity confirmed. Eyeglasses style verified across 4 scenes.", score: 95 },
-          ].map((n) => (
-            <div key={n.char} className="p-3 rounded-xl border" style={{ borderColor: "var(--border)" }}>
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-bold text-foreground">{n.char}</p>
-                <ScorePill value={n.score} />
-              </div>
-              <p className="text-xs text-muted-foreground">{n.note}</p>
-            </div>
-          ))}
+                <h3 className="font-black text-foreground mb-0.5" style={{ fontFamily: "var(--font-display)" }}>{view.entity.name}</h3>
+                <div className="flex flex-col gap-2 text-xs mb-4 mt-2">
+                  {[
+                    { label: "Scenes", val: view.scene_ids.length },
+                    { label: "Attributes", val: view.attributes.join(", ") || "—" },
+                    { label: "Costume", val: wears },
+                  ].map((f) => (
+                    <div key={f.label} className="flex items-start gap-2">
+                      <span className="text-muted-foreground w-20 flex-shrink-0">{f.label}</span>
+                      <span className="text-foreground font-medium flex-1">{f.val}</span>
+                    </div>
+                  ))}
+                </div>
+                {summary.continuity > 0 && (
+                  <div className="mb-3">
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>Continuity</span><ScorePill value={summary.continuity} /></div>
+                    <ProgressBar value={summary.continuity} color={summary.continuity >= 90 ? "var(--verse-emerald)" : "var(--verse-gold)"} />
+                  </div>
+                )}
+                <button className="w-full h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }} onClick={() => toast.info(`Opening ${view.entity.name} full profile…`)}>View Full Profile</button>
+              </Card>
+            );
+          })}
         </div>
-      </Card>
+      )}
     </div>
   );
 }
@@ -1723,59 +1769,94 @@ function DirectorTimeline() {
   );
 }
 
-function DirectorAIRecs({ onAIAction }: { onAIAction: (id: string, action: "accept" | "dismiss") => void }) {
+function DirectorAIRecs({ onAIAction, projectId }: { onAIAction: (id: string, action: "accept" | "dismiss") => void; projectId?: string }) {
+  const [liveRecs, setLiveRecs] = React.useState<Array<{ id: string; severity: "critical"|"warning"|"info"; scene: string; issue: string; confidence: number; suggestion: string; timestamp: string }> | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const load = React.useCallback(() => {
+    if (!projectId) { setLoading(false); return; }
+    setLoading(true);
+    apiContinuity.issues(projectId).then((issues) => {
+      setLiveRecs(issues.map((i) => ({
+        id: i.issue_id, severity: toDisplaySeverity(i.severity),
+        scene: i.scene_id ?? "—", issue: i.explanation || i.attribute,
+        confidence: Math.round(i.confidence * 100),
+        suggestion: i.suggested_fix || "Review the flagged scene.",
+        timestamp: "Just now",
+      })));
+    }).catch(() => setLiveRecs([])).finally(() => setLoading(false));
+  }, [projectId]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const recs = liveRecs ?? [];
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={<span>AI <span style={{ color: "var(--verse-violet)" }}>Recommendations</span></span>} subtitle="Explainable AI insights for your directorial decisions." actions={<Btn variant="primary" icon={RefreshCw} onClick={() => toast.loading("Refreshing recommendations…")}>Refresh</Btn>} />
+      <PageHeader title={<span>AI <span style={{ color: "var(--verse-violet)" }}>Recommendations</span></span>} subtitle="Explainable AI insights powered by IBM Granite." actions={<Btn variant="primary" icon={RefreshCw} onClick={load}>Refresh</Btn>} />
       <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Pending Review" value={3} icon={AlertTriangle} color="var(--verse-gold)" />
-        <StatCard label="Accepted this week" value={7} icon={CheckCircle} color="var(--verse-emerald)" />
-        <StatCard label="AI Accuracy" value="97%" icon={Brain} color="var(--verse-violet)" />
+        <StatCard label="Pending Review" value={recs.filter(r => r.severity !== "info").length || "—"} icon={AlertTriangle} color="var(--verse-gold)" />
+        <StatCard label="Critical" value={recs.filter(r => r.severity === "critical").length || "—"} icon={CheckCircle} color="var(--verse-red)" />
+        <StatCard label="Total Issues" value={recs.length || "—"} icon={Brain} color="var(--verse-violet)" />
       </div>
-      <div className="flex flex-col gap-3">
-        {aiRecommendations.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
-      </div>
+      {loading ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">Loading recommendations…</div>
+      ) : recs.length === 0 ? (
+        <EmptyState icon={Brain} title="No issues detected" description="Upload a screenplay to generate AI continuity recommendations." />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {recs.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
+        </div>
+      )}
     </div>
   );
 }
 
-function DirectorSemanticMemory() {
-  const nodes = [
-    { id: "n1", label: "Elena Chen", type: "Character", color: "var(--verse-midnight)", connections: ["Scene 17", "Scene 18", "Scene 23", "Marcus Reyes", "Navy Jacket"] },
-    { id: "n2", label: "Marcus Reyes", type: "Character", color: "var(--verse-violet)", connections: ["Scene 17", "Scene 24", "Elena Chen"] },
-    { id: "n3", label: "Navy Jacket", type: "Costume", color: "var(--verse-gold)", connections: ["Elena Chen", "Scene 17", "Scene 23"] },
-  ];
+function DirectorSemanticMemory({ projectId }: { projectId?: string }) {
+  const { entities: liveEntities, loading } = useEntityViews(projectId ?? null);
+  const { overview } = useSceneViews(projectId ?? null);
+  const entities = liveEntities ?? [];
+  const entityColorMap: Record<string, string> = { character: "var(--verse-midnight)", prop: "var(--verse-gold)", location: "var(--verse-violet)", scene: "#CBD5E1" };
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={<span><span style={{ color: "var(--verse-violet)" }}>Semantic</span> Memory</span>} subtitle="AI-constructed knowledge graph of your production's relationships." />
+      <PageHeader title={<span><span style={{ color: "var(--verse-violet)" }}>Semantic</span> Memory</span>} subtitle="IBM Granite-constructed knowledge graph of your production's relationships." />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Entities Tracked" value={127} icon={Brain} color="var(--verse-violet)" />
-        <StatCard label="Relationships" value={384} icon={GitBranch} color="var(--verse-midnight)" />
-        <StatCard label="Scenes Analyzed" value={34} icon={Film} color="var(--verse-gold)" />
-        <StatCard label="Memory Depth" value="3 acts" icon={Layers} color="var(--verse-emerald)" />
+        <StatCard label="Entities Tracked" value={overview?.entities ?? "—"} icon={Brain} color="var(--verse-violet)" />
+        <StatCard label="Semantic Facts" value={overview?.facts ?? "—"} icon={GitBranch} color="var(--verse-midnight)" />
+        <StatCard label="Scenes Analyzed" value={overview?.scenes_total ?? "—"} icon={Film} color="var(--verse-gold)" />
+        <StatCard label="Memory Coverage" value={overview ? `${Math.round((overview.scenes_shot / Math.max(overview.scenes_total, 1)) * 100)}%` : "—"} icon={Layers} color="var(--verse-emerald)" />
       </div>
-      <Card>
-        <SectionTitle action={<VioletBadge>Live Graph</VioletBadge>}>Knowledge Graph — Key Entities</SectionTitle>
-        <p className="text-xs text-muted-foreground mb-4">Semantic relationships between characters, locations, costumes, and props as understood by the VERSE AI engine.</p>
-        <div className="flex flex-col gap-4">
-          {nodes.map((node) => (
-            <div key={node.id} className="p-4 rounded-xl border" style={{ borderColor: "var(--border)" }}>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: node.color }} />
-                <span className="text-sm font-bold text-foreground">{node.label}</span>
-                <StatusBadge label={node.type} color={node.color} bg={`color-mix(in srgb, ${node.color} 12%, white)`} />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {node.connections.map((c) => (
-                  <button key={c} className="text-xs px-2 py-1 rounded-lg border transition-colors hover:bg-muted" style={{ borderColor: "var(--border)" }} onClick={() => toast.info(`Exploring: ${c}`)}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      {loading ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">Loading knowledge graph…</div>
+      ) : entities.length === 0 ? (
+        <EmptyState icon={Brain} title="Knowledge graph empty" description="Upload a screenplay to build the semantic knowledge graph." />
+      ) : (
+        <Card>
+          <SectionTitle action={<VioletBadge>Live · IBM Granite</VioletBadge>}>Knowledge Graph — Key Entities</SectionTitle>
+          <p className="text-xs text-muted-foreground mb-4">Semantic relationships between characters, locations, costumes, and props as constructed by the VERSE AI engine.</p>
+          <div className="flex flex-col gap-4">
+            {entities.slice(0, 10).map((view) => {
+              const color = entityColorMap[view.entity.type] ?? "#64748B";
+              const connections = view.scene_ids.slice(0, 5).map(id => id.replace(/_/g, " "));
+              return (
+                <div key={view.entity.key} className="p-4 rounded-xl border" style={{ borderColor: "var(--border)" }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                    <span className="text-sm font-bold text-foreground">{view.entity.name}</span>
+                    <StatusBadge label={view.entity.type} color={color} bg={`color-mix(in srgb, ${color} 12%, white)`} />
+                    <span className="ml-auto text-xs text-muted-foreground">{view.fact_count} facts</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {connections.map((c) => (
+                      <button key={c} className="text-xs px-2 py-1 rounded-lg border transition-colors hover:bg-muted" style={{ borderColor: "var(--border)" }} onClick={() => toast.info(`Exploring: ${c}`)}>
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
@@ -1784,46 +1865,76 @@ function DirectorSemanticMemory() {
 // SCRIPT SUPERVISOR PAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ScriptSupervisorOverview({ productionName, onAIAction }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void }) {
+function ScriptSupervisorOverview({ productionName, onAIAction, projectId }: { productionName: string; onAIAction: (id: string, action: "accept" | "dismiss") => void; projectId?: string }) {
+  const { scenes: liveScenes, overview } = useSceneViews(projectId ?? null);
+  const [liveRecs, setLiveRecs] = React.useState<Array<{ id: string; severity: "critical"|"warning"|"info"; scene: string; issue: string; confidence: number; suggestion: string; timestamp: string }> | null>(null);
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiContinuity.issues(projectId).then((issues) => {
+      if (!issues.length) return;
+      setLiveRecs(issues.slice(0, 2).map((i) => ({
+        id: i.issue_id, severity: toDisplaySeverity(i.severity),
+        scene: i.scene_id ?? "—", issue: i.explanation || i.attribute,
+        confidence: Math.round(i.confidence * 100),
+        suggestion: i.suggested_fix || "Review the flagged scene.",
+        timestamp: "Just now",
+      })));
+    }).catch(() => {});
+  }, [projectId]);
+
+  const rows = liveScenes.length > 0 ? sceneViewsToRows(liveScenes) : [];
+  const issues = liveRecs ?? [];
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Script Supervisor" subtitle={`Continuity tracking for ${productionName}.`} actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New continuity note added.")}>Add Note</Btn>} />
+      <PageHeader
+        title={<span className="inline-flex items-center gap-2">Script Supervisor Overview <DataSourceBadge live={liveScenes.length > 0 || (liveRecs != null && liveRecs.length > 0)} /></span>}
+        subtitle={`Continuity tracking for ${productionName}.`}
+        actions={<Btn variant="primary" icon={Plus} onClick={() => toast.success("New continuity note added.")}>Add Note</Btn>}
+      />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Scenes Reviewed" value="34" icon={FileText} color="#0F62FE" />
-        <StatCard label="Continuity Issues" value={4} subtext="2 critical" icon={AlertTriangle} color="var(--verse-red)" />
-        <StatCard label="AI Alerts" value={2} icon={Zap} color="var(--verse-gold)" />
-        <StatCard label="Accuracy Score" value="97%" icon={CheckCircle} color="var(--verse-emerald)" />
+        <StatCard label="Scenes" value={overview?.scenes_total ?? "—"} icon={FileText} color="#0F62FE" />
+        <StatCard label="Issues" value={issues.length || "—"} subtext={issues.filter(i => i.severity === "critical").length > 0 ? `${issues.filter(i => i.severity === "critical").length} critical` : undefined} icon={AlertTriangle} color="var(--verse-red)" />
+        <StatCard label="Clean Scenes" value={overview?.scenes_clean ?? "—"} icon={Zap} color="var(--verse-gold)" />
+        <StatCard label="Avg. Score" value={overview?.average_scene_score != null ? `${overview.average_scene_score}%` : "—"} icon={CheckCircle} color="var(--verse-emerald)" />
       </div>
-      <Card>
-        <SectionTitle action={<button className="text-xs text-primary font-semibold hover:underline" onClick={() => toast.info("Downloading CSV…")}><Download size={12} className="inline mr-1" />Export</button>}>Continuity Log</SectionTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b" style={{ borderColor: "var(--border)" }}>
-              {["Scene", "Location", "Characters", "Status", "Score", "Flag"].map((h) => <th key={h} className="pb-3 pr-4 text-left text-xs font-bold text-muted-foreground">{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {sceneList.map((row) => {
-                const sc = { Flagged: { bg: "#FEF2F2", c: "var(--verse-red)" }, Logged: { bg: "#ECFDF5", c: "var(--verse-emerald)" }, Review: { bg: "var(--verse-gold-light)", c: "var(--verse-gold)" }, "In Progress": { bg: "var(--verse-violet-light)", c: "var(--verse-violet)" }, Scheduled: { bg: "#F1F3F7", c: "#64748B" } }[row.status] || { bg: "#F1F3F7", c: "#64748B" };
-                return (
-                  <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors" style={{ borderColor: "var(--border)" }}>
-                    <td className="py-3 pr-4 font-semibold text-foreground" style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{row.scene}</td>
-                    <td className="py-3 pr-4 text-muted-foreground text-xs">{row.location}</td>
-                    <td className="py-3 pr-4 text-muted-foreground text-xs">{row.chars}</td>
-                    <td className="py-3 pr-4"><StatusBadge label={row.status} color={sc.c} bg={sc.bg} /></td>
-                    <td className="py-3 pr-4">{row.score > 0 ? <ScorePill value={row.score} /> : <span className="text-xs text-muted-foreground">—</span>}</td>
-                    <td className="py-3">{row.status === "Flagged" ? <AlertTriangle size={14} style={{ color: "var(--verse-red)" }} /> : <CheckCircle size={14} style={{ color: "var(--verse-emerald)" }} />}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      {rows.length > 0 ? (
+        <Card>
+          <SectionTitle action={<button className="text-xs text-primary font-semibold hover:underline" onClick={() => toast.info("Downloading CSV…")}><Download size={12} className="inline mr-1" />Export</button>}>Continuity Log</SectionTitle>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                {["Scene", "Location", "Characters", "Status", "Score", "Flag"].map((h) => <th key={h} className="pb-3 pr-4 text-left text-xs font-bold text-muted-foreground">{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {rows.map((row) => {
+                  const sc = { Flagged: { bg: "#FEF2F2", c: "var(--verse-red)" }, Logged: { bg: "#ECFDF5", c: "var(--verse-emerald)" }, Review: { bg: "var(--verse-gold-light)", c: "var(--verse-gold)" }, "In Progress": { bg: "var(--verse-violet-light)", c: "var(--verse-violet)" }, Scheduled: { bg: "#F1F3F7", c: "#64748B" } }[row.status] || { bg: "#F1F3F7", c: "#64748B" };
+                  return (
+                    <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors" style={{ borderColor: "var(--border)" }}>
+                      <td className="py-3 pr-4 font-semibold text-foreground" style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{row.scene}</td>
+                      <td className="py-3 pr-4 text-muted-foreground text-xs">{row.location}</td>
+                      <td className="py-3 pr-4 text-muted-foreground text-xs">{row.chars}</td>
+                      <td className="py-3 pr-4"><StatusBadge label={row.status} color={sc.c} bg={sc.bg} /></td>
+                      <td className="py-3 pr-4">{row.score > 0 ? <ScorePill value={row.score} /> : <span className="text-xs text-muted-foreground">—</span>}</td>
+                      <td className="py-3">{row.status === "Flagged" ? <AlertTriangle size={14} style={{ color: "var(--verse-red)" }} /> : <CheckCircle size={14} style={{ color: "var(--verse-emerald)" }} />}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
+        <EmptyState icon={FileText} title="No scenes yet" description="Upload a screenplay to populate the continuity log." />
+      )}
       <div>
         <SectionTitle>AI Alerts</SectionTitle>
-        <div className="flex flex-col gap-3">
-          {aiRecommendations.slice(0, 2).map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
-        </div>
+        {issues.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {issues.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
+          </div>
+        ) : (
+          <EmptyState icon={Zap} title="No alerts" description="AI alerts will appear after screenplay upload and analysis." />
+        )}
       </div>
     </div>
   );
@@ -1832,44 +1943,58 @@ function ScriptSupervisorOverview({ productionName, onAIAction }: { productionNa
 function ContinuityTracking({ projectId }: { projectId?: string }) {
   const [showLog, setShowLog] = useState(false);
   const [newIssueDesc, setNewIssueDesc] = useState("");
-  const [issues, setIssues] = useState([
+  const mockIssues = [
     { id: "ci1", scene: "Scene 18", type: "Timeline", desc: "References 'Tuesday morning' but Scene 17 established 'Monday evening'.", severity: "critical", resolved: false, live: false },
     { id: "ci2", scene: "Scene 23", type: "Costume", desc: "Elena's jacket changes from navy to black between shots 23A and 23C.", severity: "warning", resolved: false, live: false },
     { id: "ci3", scene: "Scene 31", type: "Prop", desc: "Marcus's watch absent in shots 31B–31D.", severity: "warning", resolved: false, live: false },
     { id: "ci4", scene: "Scene 17", type: "Dialogue", desc: "Minor inconsistency in coffee cup position during dialogue exchange.", severity: "info", resolved: true, live: false },
-  ]);
+  ];
+  const [issues, setIssues] = useState(mockIssues);
   const [isLive, setIsLive] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Real issues from the engine, produced by comparing the ingested script
-  // against the ingested footage. Mock issues stay put when there are none.
-  React.useEffect(() => {
+  // Converts a ContinuityIssue from the engine into the display shape.
+  const mapIssue = (i: { issue_id: string; scene_id: string | null; category: string; explanation: string; attribute: string; expected: { value: unknown }; observed: { value: unknown }; severity: string; status: string }) => ({
+    id: i.issue_id,
+    scene: i.scene_id ?? "—",
+    type: i.category,
+    desc: i.explanation || `${i.attribute}: expected ${String(i.expected.value)}, observed ${String(i.observed.value)}`,
+    severity: i.severity === "critical" ? "critical" : i.severity === "low" ? "info" : ("warning" as "critical" | "warning" | "info"),
+    resolved: i.status === "resolved" || i.status === "dismissed",
+    live: true,
+  });
+
+  // Fetch live issues from the engine; fall back to mock data when offline.
+  const fetchIssues = React.useCallback(() => {
     if (!projectId) return;
+    setLoading(true);
     apiContinuity.issues(projectId)
       .then((live) => {
-        if (!live.length) return;
+        if (!live.length) { setLoading(false); return; }
         setIsLive(true);
-        setIssues(live.map((i) => ({
-          id: i.issue_id,
-          scene: i.scene_id ?? "—",
-          type: i.category,
-          desc: i.explanation || `${i.attribute}: expected ${String(i.expected.value)}, observed ${String(i.observed.value)}`,
-          severity: i.severity === "critical" ? "critical" : i.severity === "low" ? "info" : "warning",
-          resolved: i.status === "resolved" || i.status === "dismissed",
-          live: true,
-        })));
+        setIssues(live.map(mapIssue));
       })
-      .catch(() => { /* backend offline — keep the mock issues */ });
+      .catch(() => { /* backend offline — keep the mock issues */ })
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  React.useEffect(() => { fetchIssues(); }, [fetchIssues]);
 
   const toggleResolved = async (id: string) => {
     const issue = issues.find((i) => i.id === id);
+    // Optimistic update
     setIssues((prev) => prev.map((i) => i.id === id ? { ...i, resolved: !i.resolved } : i));
     if (issue?.live && projectId) {
       try {
         await apiContinuity.feedback(projectId, id, issue.resolved ? "reopen" : "resolve");
-        toast.success(issue.resolved ? "Issue reopened." : "Issue resolved — the score updates on the next analysis.");
+        toast.success(issue.resolved ? "Issue reopened." : "Issue resolved — score refreshed on next analysis.");
+        // Refetch so stat cards reflect the real engine state
+        fetchIssues();
         return;
       } catch {
+        // Roll back optimistic change on error
+        setIssues((prev) => prev.map((i) => i.id === id ? { ...i, resolved: issue.resolved } : i));
         toast.error("Could not record the decision with the engine.");
         return;
       }
@@ -1877,13 +2002,31 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
     toast.success("Continuity issue status updated.");
   };
   const sev = { critical: { c: "var(--verse-red)", bg: "#FEF2F2", l: "Critical" }, warning: { c: "var(--verse-gold)", bg: "var(--verse-gold-light)", l: "Warning" }, info: { c: "#0F62FE", bg: "#EFF6FF", l: "Info" } };
+  const openCount     = issues.filter((i) => !i.resolved).length;
+  const resolvedCount = issues.filter((i) =>  i.resolved).length;
+  const resolutionRate = issues.length > 0 ? Math.round((resolvedCount / issues.length) * 100) : 0;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title={<span className="inline-flex items-center gap-2">Continuity Tracking <DataSourceBadge live={isLive} /></span>}
         subtitle="Monitor, flag, and resolve continuity issues. Resolving a detected issue is recorded with the engine and re-scores the production."
-        actions={<Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Issue</Btn>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Btn variant="secondary" icon={RefreshCw} onClick={fetchIssues}>Refresh</Btn>
+            <Btn variant="primary" icon={Plus} onClick={() => setShowLog(true)}>Log Issue</Btn>
+          </div>
+        }
       />
+
+      {/* Loading banner — shown while the first fetch is in flight */}
+      {loading && (
+        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(124,58,237,0.25)", background: "var(--verse-violet-light)" }}>
+          <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
+          <p className="text-sm font-medium" style={{ color: "var(--verse-violet)" }}>Loading continuity issues from the engine…</p>
+        </div>
+      )}
+
       {showLog && (
         <div className="rounded-2xl border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
           <p className="text-sm font-bold text-foreground">Log New Issue</p>
@@ -1894,11 +2037,13 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
           </div>
         </div>
       )}
+
       <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Open Issues" value={issues.filter((i) => !i.resolved).length} icon={AlertTriangle} color="var(--verse-red)" />
-        <StatCard label="Resolved" value={issues.filter((i) => i.resolved).length} icon={CheckCircle} color="var(--verse-emerald)" />
-        <StatCard label="Resolution Rate" value={`${Math.round((issues.filter((i) => i.resolved).length / issues.length) * 100)}%`} icon={TrendingUp} color="var(--verse-midnight)" />
+        <StatCard label="Open Issues"      value={loading ? "…" : openCount}                     icon={AlertTriangle} color="var(--verse-red)"      />
+        <StatCard label="Resolved"         value={loading ? "…" : resolvedCount}                  icon={CheckCircle}   color="var(--verse-emerald)"  />
+        <StatCard label="Resolution Rate"  value={loading ? "…" : `${resolutionRate}%`}            icon={TrendingUp}    color="var(--verse-midnight)" />
       </div>
+
       <div className="flex flex-col gap-3">
         {issues.map((issue) => {
           const s = sev[issue.severity as keyof typeof sev];
@@ -1906,11 +2051,12 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
             <Card key={issue.id}>
               <div className="flex items-start gap-4">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <StatusBadge label={s.l} color={s.c} bg={s.bg} />
                     <span className="text-xs font-mono text-muted-foreground">{issue.scene}</span>
                     <span className="text-xs text-muted-foreground">· {issue.type}</span>
                     {issue.resolved && <StatusBadge label="Resolved" color="var(--verse-emerald)" bg="#ECFDF5" />}
+                    {issue.live && <StatusBadge label="Live" color="var(--verse-emerald)" bg="#ECFDF5" />}
                   </div>
                   <p className={`text-sm leading-relaxed ${issue.resolved ? "line-through text-muted-foreground" : "text-foreground"}`}>{issue.desc}</p>
                 </div>
@@ -1918,6 +2064,7 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
                   onClick={() => toggleResolved(issue.id)}
                   className="flex-shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition-colors hover:bg-muted"
                   style={{ borderColor: "var(--border)" }}
+                  title={issue.resolved ? "Reopen issue" : "Mark resolved"}
                 >
                   <CheckCircle size={15} style={{ color: issue.resolved ? "var(--verse-emerald)" : "var(--muted-foreground)" }} />
                 </button>
@@ -1932,80 +2079,258 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
 
 function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
   // ── upload state ───────────────────────────────────────────────────────
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading]   = useState(false);
+  const [analysing, setAnalysing]   = useState(false);
+  const [activeTab, setActiveTab]   = useState<"scenes" | "characters" | "props" | "timeline">("scenes");
+
   const [uploadResult, setUploadResult] = useState<{
     scenes_detected: number; facts_ingested: number; filename: string;
-  } | null>(null);
-  const [analysing, setAnalysing] = useState(false);
-
-  // ── live scene data from the engine after upload ───────────────────────
-  // Each entry is built directly from SceneView returned by GET /continuity/scenes.
-  // Entity names come from scene.entities[], score from scene.score,
-  // scene label from scene.slugline or scene.scene_id.
-  const [liveScenes, setLiveScenes] = useState<Array<{
-    num: string;           // scene label, e.g. "INT. OFFICE - DAY"
-    entities: string[];    // character / prop / location names from the engine
-    aiScore: number;       // 0–100 continuity score from the engine
-    hasConflict: boolean;  // true when the scene has at least one issue
-  }>>([]);
-
-  // ── live summary stats from the engine ────────────────────────────────
-  const [liveStats, setLiveStats] = useState<{
-    entityCount: number;   // total unique entities across all scenes
-    avgScore: number;      // average per-scene continuity score (0–100)
+    warnings?: string[];
+    entities?: string[];   // "character:VICTOR_FRANKENSTEIN", "prop:KNIFE", …
   } | null>(null);
 
-  // ── fallback demo scenes — shown only before the first upload ─────────
-  const demoScenes = [
-    { num: "Scene 17", entities: ["Elena Chen", "Marcus Reyes", "Office Interior", "Coffee Mug", "Monday Evening"], aiScore: 100, hasConflict: false },
-    { num: "Scene 18", entities: ["Elena Chen", "Dr. Park", "Office Interior", "Tuesday Morning"], aiScore: 72, hasConflict: true },
-    { num: "Scene 23", entities: ["Elena Chen", "Navy Jacket", "Diner Interior", "Evening"], aiScore: 81, hasConflict: true },
+  // ── raw engine data ────────────────────────────────────────────────────
+  const [sceneViews,  setSceneViews]  = useState<SceneView[]>([]);
+  const [entityViews, setEntityViews] = useState<EntityView[]>([]);
+  const [avgScore,    setAvgScore]    = useState<number | null>(null);
+
+  // ── on-mount: load existing engine data ───────────────────────────────
+  React.useEffect(() => {
+    if (!projectId) return;
+    setAnalysing(true);
+    Promise.allSettled([
+      apiContinuity.scenes(projectId, false),
+      apiContinuity.entities(projectId),
+    ]).then(([scenesRes, entitiesRes]) => {
+      if (scenesRes.status === "fulfilled" && scenesRes.value.scenes?.length) {
+        const views = scenesRes.value.scenes;
+        setSceneViews(views);
+        const ov = scenesRes.value.overview;
+        setUploadResult((prev) => prev ?? {
+          scenes_detected: ov?.scenes_total ?? views.length,
+          facts_ingested:  ov?.facts        ?? views.reduce((n, sv) => n + sv.fact_count, 0),
+          filename: "Previously ingested screenplay",
+        });
+        setAvgScore(
+          ov?.average_scene_score != null
+            ? Math.round(ov.average_scene_score)
+            : views.length > 0
+              ? Math.round(views.reduce((n, sv) => n + sv.score, 0) / views.length)
+              : null,
+        );
+      }
+      if (entitiesRes.status === "fulfilled" && entitiesRes.value.length) {
+        setEntityViews(entitiesRes.value);
+      }
+    }).finally(() => setAnalysing(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // ── entity type classification ─────────────────────────────────────────
+  // The heuristic extractor uses many raw_type strings (CHARACTER, ACTOR,
+  // PERSON_NAME, etc.).  We check both entity.type and entity.raw_type so
+  // entities are never silently dropped into an "unknown" bucket.
+  const CHARACTER_TYPES = new Set(["character","person","actor","actor_name","person_name","character_name","named_entity"]);
+  const PROP_TYPES      = new Set(["prop","object","item","artefact","artifact","thing","element"]);
+  const LOCATION_TYPES  = new Set(["location","place","set","setting","environment","locale"]);
+
+  const classifyEntity = (ev: EntityView): "character" | "prop" | "location" | "other" => {
+    const t  = (ev.entity.type      ?? "").toLowerCase().replace(/[_\- ]/g, "");
+    const rt = (ev.entity.raw_type  ?? "").toLowerCase().replace(/[_\- ]/g, "");
+    const k  = (ev.entity.key       ?? "").toLowerCase();
+    if (CHARACTER_TYPES.has(t) || CHARACTER_TYPES.has(rt)) return "character";
+    if (PROP_TYPES.has(t)      || PROP_TYPES.has(rt))      return "prop";
+    if (LOCATION_TYPES.has(t)  || LOCATION_TYPES.has(rt))  return "location";
+    // Key-prefix heuristic: engine keys like "character:victor_frankenstein"
+    if (k.startsWith("character:") || k.startsWith("person:") || k.startsWith("actor:")) return "character";
+    if (k.startsWith("prop:") || k.startsWith("object:") || k.startsWith("item:"))       return "prop";
+    if (k.startsWith("location:") || k.startsWith("place:") || k.startsWith("set:"))     return "location";
+    return "other";
+  };
+
+  const charEntities = entityViews.filter((ev) => classifyEntity(ev) === "character");
+  const propEntities = entityViews.filter((ev) => classifyEntity(ev) === "prop");
+  const locEntities  = entityViews.filter((ev) => classifyEntity(ev) === "location");
+
+  // ── parse upload-result entity strings as the ground-truth character list ──
+  // UploadResult.entities[] contains strings like "character:VICTOR_FRANKENSTEIN"
+  // or "prop:KNIFE" — these come directly from the ingestion pipeline and are the
+  // most reliable source of type information when entity.type is ambiguous.
+  const parseTypedEntities = (raw: string[]): EntityView[] =>
+    raw.map((s): EntityView | null => {
+      const colonIdx = s.indexOf(":");
+      if (colonIdx === -1) return null;
+      const rawType = s.slice(0, colonIdx).toLowerCase();
+      const rawName = s.slice(colonIdx + 1);
+      const name = rawName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const key  = s.toLowerCase().replace(/ /g, "_");
+      const type = CHARACTER_TYPES.has(rawType) ? "character"
+                 : PROP_TYPES.has(rawType)      ? "prop"
+                 : LOCATION_TYPES.has(rawType)  ? "location"
+                 : rawType;
+      return {
+        entity: { type, name, key, raw_type: rawType },
+        scene_ids: [], slots: [], attributes: [],
+        issue_count: 0, conflict_count: 0, fact_count: 0, latest: {},
+      };
+    }).filter((x): x is EntityView => x !== null);
+
+  // If the engine returned entities but none classified as characters,
+  // treat ALL engine entities as potential characters (engine may use
+  // non-standard type strings for real PDF extractions).
+  // Also merge upload-result entity strings as a guaranteed character source.
+  const buildCharList = (): EntityView[] => {
+    // First try: properly classified characters from the engine
+    if (charEntities.length > 0) return charEntities;
+
+    // Second try: all engine entities (when type classification is ambiguous)
+    if (entityViews.length > 0) return entityViews;
+
+    // Third try: parse the upload-result entity strings directly
+    if (uploadResult?.entities?.length) {
+      return parseTypedEntities(uploadResult.entities).filter(
+        (ev) => classifyEntity(ev) === "character"
+      );
+    }
+
+    // Fourth try: mine names from SceneView.entities[] EntityRefs across all scenes
+    if (sceneViews.length > 0) {
+      const seen = new Set<string>();
+      const synthChars: EntityView[] = [];
+      sceneViews.forEach((sv) => {
+        sv.entities.forEach((eref) => {
+          const cls = classifyEntity({ entity: eref } as EntityView);
+          if ((cls === "character" || cls === "other") && !seen.has(eref.key)) {
+            seen.add(eref.key);
+            synthChars.push({
+              entity: eref,
+              scene_ids: [sv.scene_id],
+              slots: [], attributes: [],
+              issue_count: 0, conflict_count: 0, fact_count: 0, latest: {},
+            });
+          }
+        });
+      });
+      if (synthChars.length > 0) return synthChars;
+    }
+
+    return [];
+  };
+
+  const buildPropList = (): EntityView[] => {
+    if (propEntities.length > 0) return propEntities;
+    if (uploadResult?.entities?.length) {
+      return parseTypedEntities(uploadResult.entities).filter(
+        (ev) => classifyEntity(ev) === "prop"
+      );
+    }
+    // Mine from SceneView entity refs
+    const seen = new Set<string>();
+    const synthProps: EntityView[] = [];
+    sceneViews.forEach((sv) => {
+      sv.entities.forEach((eref) => {
+        if (classifyEntity({ entity: eref } as EntityView) === "prop" && !seen.has(eref.key)) {
+          seen.add(eref.key);
+          synthProps.push({
+            entity: eref,
+            scene_ids: [sv.scene_id],
+            slots: [], attributes: [],
+            issue_count: 0, conflict_count: 0, fact_count: 0, latest: {},
+          });
+        }
+      });
+    });
+    return synthProps;
+  };
+
+  // ── fallback demo data shown before first upload ───────────────────────
+  const demoScenes: SceneView[] = [
+    { scene_id: "SCENE_017", sequence: 17, slugline: "INT. OFFICE — DAY",       location: "Office Interior",  time_of_day: "DAY",   score: 100, issue_count: 0, issues_by_severity: {}, category_scores: {}, categories: [], entities: [{ type: "character", name: "Elena Chen", key: "elena_chen", raw_type: null }, { type: "character", name: "Marcus Reyes", key: "marcus_reyes", raw_type: null }, { type: "prop", name: "Coffee Mug", key: "coffee_mug", raw_type: null }], sources: [], has_footage: false, fact_count: 5, headline: "Elena and Marcus discuss the case over coffee." },
+    { scene_id: "SCENE_018", sequence: 18, slugline: "INT. OFFICE — MORNING",   location: "Office Interior",  time_of_day: "MORNING", score: 72, issue_count: 1, issues_by_severity: { warning: 1 }, category_scores: {}, categories: ["timeline"], entities: [{ type: "character", name: "Elena Chen", key: "elena_chen", raw_type: null }, { type: "character", name: "Dr. Park", key: "dr_park", raw_type: null }], sources: [], has_footage: false, fact_count: 3, headline: "Timeline inconsistency: Scene 17 ends Monday evening." },
+    { scene_id: "SCENE_023", sequence: 23, slugline: "INT. DINER — EVENING",    location: "Diner Interior",   time_of_day: "EVENING", score: 81, issue_count: 1, issues_by_severity: { warning: 1 }, category_scores: {}, categories: ["costume"], entities: [{ type: "character", name: "Elena Chen", key: "elena_chen", raw_type: null }, { type: "prop", name: "Navy Jacket", key: "navy_jacket", raw_type: null }], sources: [], has_footage: false, fact_count: 4, headline: "Jacket colour conflict: navy vs. black between shots." },
+  ];
+  const demoEntityViews: EntityView[] = [
+    { entity: { type: "character", name: "Elena Chen",   key: "elena_chen",   raw_type: null }, scene_ids: ["SCENE_017","SCENE_018","SCENE_023"], slots: [], attributes: ["wears","carries"], issue_count: 1, conflict_count: 1, fact_count: 8,  latest: { wears: "Navy blazer" } },
+    { entity: { type: "character", name: "Marcus Reyes", key: "marcus_reyes", raw_type: null }, scene_ids: ["SCENE_017"],                        slots: [], attributes: ["wears"],           issue_count: 0, conflict_count: 0, fact_count: 3,  latest: { wears: "Charcoal suit" } },
+    { entity: { type: "character", name: "Dr. Park",     key: "dr_park",      raw_type: null }, scene_ids: ["SCENE_018"],                        slots: [], attributes: ["wears"],           issue_count: 0, conflict_count: 0, fact_count: 2,  latest: { wears: "White lab coat" } },
+    { entity: { type: "prop",      name: "Coffee Mug",   key: "coffee_mug",   raw_type: null }, scene_ids: ["SCENE_017"],                        slots: [], attributes: ["appearance"],      issue_count: 0, conflict_count: 0, fact_count: 1,  latest: {} },
+    { entity: { type: "prop",      name: "Navy Jacket",  key: "navy_jacket",  raw_type: null }, scene_ids: ["SCENE_023"],                        slots: [], attributes: ["colour"],          issue_count: 1, conflict_count: 1, fact_count: 2,  latest: { colour: "Navy" } },
   ];
 
+  // ── parse "character:ELENA_CHEN" → "Elena Chen" ───────────────────────
+  const parseEntityNames = (raw: string[]): string[] =>
+    raw.map((s) => {
+      const name = s.includes(":") ? s.split(":").slice(1).join(":") : s;
+      return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    });
+
+  // ── synthesize tags from SceneView structural fields ──────────────────
+  // Used as a per-scene fallback when EntityRef[] is empty.
+  const synthesizeFromScene = (sv: SceneView): string[] => {
+    const tags: string[] = [];
+    if (sv.location) tags.push(sv.location);
+    if (sv.time_of_day) tags.push(sv.time_of_day);
+    if (sv.slugline) {
+      sv.slugline.split(/[\-–—,/]+/).map((p) => p.trim()).forEach((part) => {
+        const clean = part.replace(/^(INT|EXT|INT\/EXT|I\/E)\.\s*/i, "").trim();
+        if (clean.length > 1 && clean !== sv.location && clean !== sv.time_of_day && !tags.includes(clean))
+          tags.push(clean);
+      });
+    }
+    sv.categories?.forEach((cat) => {
+      const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+      if (!tags.includes(label)) tags.push(label);
+    });
+    return tags.filter(Boolean);
+  };
+
+  // ── upload handler ────────────────────────────────────────────────────
   const handleUpload = async (file: File) => {
     if (!file) return;
     const pid = projectId ?? "VERSE_DEMO";
     setUploading(true);
     try {
-      // Step 1 — ingest the screenplay into the knowledge graph
-      const result = await apiUpload.screenplay(pid, file);
-      setUploadResult(result);
-      toast.success(`"${result.filename}" ingested — ${result.scenes_detected} scenes, ${result.facts_ingested} facts extracted.`);
+      const rawResult = await apiUpload.screenplay(pid, file);
+      // Preserve entities[] — "character:NAME" strings are the ground-truth type map
+      setUploadResult(rawResult);
+      toast.success(`"${rawResult.filename}" ingested — ${rawResult.scenes_detected} scenes, ${rawResult.facts_ingested} facts extracted.`);
 
-      // Step 2 — fetch the per-scene rollup from the engine.
-      // GET /continuity/scenes returns SceneView[] with real entity names,
-      // per-scene scores, and issue counts — the source of truth after ingest.
       setAnalysing(true);
       try {
-        const scenesData = await apiContinuity.scenes(pid, /* analyse= */ true);
-        const views: SceneView[] = scenesData.scenes ?? [];
+        const [scenesRes, entitiesRes] = await Promise.allSettled([
+          apiContinuity.scenes(pid, /* analyse= */ true),
+          apiContinuity.entities(pid),
+        ]);
 
-        // Map SceneView → display row:
-        //   label   = slugline when available, else the raw scene_id
-        //   entities = character + prop + location names from the engine
-        //   aiScore  = engine score (0–100), clamped so 0 shows as 0 not "—"
-        //   hasConflict = at least one issue in this scene
-        setLiveScenes(
-          views.map((sv) => ({
-            num: sv.slugline ?? sv.scene_id,
-            entities: sv.entities.map((e) => e.name),
-            aiScore: Math.round(sv.score),
-            hasConflict: (sv.issue_count ?? 0) > 0,
-          }))
-        );
+        if (scenesRes.status === "fulfilled") {
+          const views = scenesRes.value.scenes ?? [];
+          setSceneViews(views);
+          const ov = scenesRes.value.overview;
+          setAvgScore(
+            ov?.average_scene_score != null
+              ? Math.round(ov.average_scene_score)
+              : views.length > 0
+                ? Math.round(views.reduce((n, sv) => n + sv.score, 0) / views.length)
+                : null,
+          );
+        } else if (rawResult.scene_ids?.length) {
+          setSceneViews(rawResult.scene_ids.map((id, i) => ({
+            scene_id: id, sequence: i + 1, slugline: id, location: null, time_of_day: null,
+            score: 0, issue_count: 0, issues_by_severity: {}, category_scores: {},
+            categories: [], entities: [], sources: [], has_footage: false, fact_count: 0, headline: "",
+          })));
+        }
 
-        // Derive summary stats from the overview the endpoint returns
-        const ov = scenesData.overview;
-        setLiveStats({
-          entityCount: ov?.entities ?? views.reduce((n, sv) => n + sv.entities.length, 0),
-          avgScore: ov?.average_scene_score != null
-            ? Math.round(ov.average_scene_score)
-            : views.length > 0
-              ? Math.round(views.reduce((n, sv) => n + sv.score, 0) / views.length)
-              : 0,
-        });
-      } catch { /* scenes fetch optional — stat cards fall back to upload result */ }
-      finally { setAnalysing(false); }
+        // Always store whatever the engine returns — buildCharList() handles
+        // ambiguous entity.type values via its multi-fallback chain.
+        if (entitiesRes.status === "fulfilled") {
+          setEntityViews(entitiesRes.value);
+        }
+        // entities endpoint failure is handled by buildCharList() reading
+        // uploadResult.entities directly — no separate synthesise step needed.
+      } finally {
+        setAnalysing(false);
+      }
     } catch (e) {
       const isAuthError = e instanceof Error && (
         e.message.includes("401") ||
@@ -2030,15 +2355,27 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
     input.click();
   };
 
-  // Show live scenes after upload; fall back to demo cards before first upload
-  const isLive = liveScenes.length > 0;
-  const displayScenes = isLive ? liveScenes : demoScenes;
+  const isLive      = uploadResult != null;
+  const scenes      = isLive ? sceneViews  : demoScenes;
+  const allEntities = isLive ? entityViews : demoEntityViews;
+  // Use the multi-fallback builders so Characters/Props tabs never show empty
+  // when the engine has data — regardless of how entity.type is classified.
+  const liveChars   = isLive ? buildCharList() : demoEntityViews.filter((e) => e.entity.type === "character");
+  const liveProps   = isLive ? buildPropList() : demoEntityViews.filter((e) => e.entity.type === "prop");
 
-  // Stat values: prefer live engine data, then upload result, then placeholder
-  const totalScenes = uploadResult?.scenes_detected ?? "—";
-  const totalFacts  = uploadResult?.facts_ingested  ?? "—";
-  const entityCount = liveStats?.entityCount ?? (isLive ? liveScenes.reduce((n, s) => n + s.entities.length, 0) : "—");
-  const avgScore    = liveStats?.avgScore    != null ? `${liveStats.avgScore}%` : "—";
+  // Stat values
+  const totalScenes  = uploadResult?.scenes_detected ?? scenes.length;
+  const totalFacts   = uploadResult?.facts_ingested  ?? "—";
+  const entityCount  = isLive ? allEntities.length : demoEntityViews.length;
+  const scoreDisplay = avgScore != null ? `${avgScore}%` : (isLive ? "—" : "100%");
+
+  // ── tab styles ─────────────────────────────────────────────────────────
+  const tabs: { key: typeof activeTab; label: string; count: number }[] = [
+    { key: "scenes",     label: "Scenes",     count: scenes.length },
+    { key: "characters", label: "Characters", count: liveChars.length },
+    { key: "props",      label: "Props",      count: liveProps.length },
+    { key: "timeline",   label: "Timeline",   count: scenes.length },
+  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -2047,22 +2384,20 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
         subtitle="Upload your screenplay — VERSE extracts scenes, characters, props, and timelines automatically."
         actions={
           <Btn variant="primary" icon={Upload} onClick={openFilePicker}>
-            {uploading ? "Uploading…" : uploadResult ? "Re-upload Screenplay" : "Upload Screenplay"}
+            {uploading ? "Uploading…" : isLive ? "Re-upload Screenplay" : "Upload Screenplay"}
           </Btn>
         }
       />
 
-      {/* Upload / analysis progress banner */}
+      {/* Progress banners */}
       {(uploading || analysing) && (
         <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(124,58,237,0.25)", background: "var(--verse-violet-light)" }}>
           <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
           <p className="text-sm font-medium" style={{ color: "var(--verse-violet)" }}>
-            {uploading ? "Ingesting screenplay into production memory…" : "Running AI continuity analysis…"}
+            {uploading ? "Ingesting screenplay into production memory…" : "Extracting scenes, characters, props and timeline…"}
           </p>
         </div>
       )}
-
-      {/* Success banner with live counts from the upload response */}
       {uploadResult && !uploading && !analysing && (
         <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(5,150,105,0.25)", background: "#ECFDF5" }}>
           <CheckCircle size={16} style={{ color: "var(--verse-emerald)" }} />
@@ -2071,63 +2406,291 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
           </p>
         </div>
       )}
+      {uploadResult?.warnings && uploadResult.warnings.length > 0 && (
+        <PipelineWarnings warnings={uploadResult.warnings} />
+      )}
 
-      {/* Stat cards — all values come from the engine after upload */}
+      {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Scenes"     value={totalScenes} icon={FileText}    color="var(--verse-midnight)" />
-        <StatCard label="Facts Extracted"  value={totalFacts}  icon={Brain}       color="var(--verse-violet)"   />
-        <StatCard label="Entities Tracked" value={entityCount} icon={Layers}      color="var(--verse-gold)"     />
-        <StatCard label="Semantic Score"   value={avgScore}    icon={CheckCircle} color="var(--verse-emerald)"  />
+        <StatCard label="Total Scenes"     value={totalScenes}  icon={FileText}    color="var(--verse-midnight)" />
+        <StatCard label="Facts Extracted"  value={totalFacts}   icon={Brain}       color="var(--verse-violet)"   />
+        <StatCard label="Entities Tracked" value={entityCount}  icon={Layers}      color="var(--verse-gold)"     />
+        <StatCard label="Semantic Score"   value={scoreDisplay} icon={CheckCircle} color="var(--verse-emerald)"  />
       </div>
 
-      {/* Scene cards — populated from SceneView after upload, demo cards before */}
-      <div className="flex flex-col gap-4">
-        {displayScenes.map((s, i) => (
-          <Card key={i}>
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h3 className="font-bold text-foreground text-sm" style={{ fontFamily: "var(--font-display)" }}>{s.num}</h3>
-                <p className="text-xs text-muted-foreground">{isLive ? "Live — from uploaded screenplay" : "Demo data"}</p>
-              </div>
-              {s.aiScore > 0 && <ScorePill value={s.aiScore} />}
-            </div>
-            <div>
-              <p className="text-xs font-bold text-muted-foreground mb-2">Extracted Entities</p>
-              <div className="flex flex-wrap gap-2">
-                {s.entities.length > 0 ? s.entities.map((e) => (
-                  <span
-                    key={e}
-                    className="text-xs px-2 py-1 rounded-lg border"
-                    style={{
-                      borderColor: (s.hasConflict && isLive) ? "rgba(154,111,0,0.3)" : "var(--border)",
-                      color:       (s.hasConflict && isLive) ? "var(--verse-gold)"   : "var(--muted-foreground)",
-                      background:  (s.hasConflict && isLive) ? "var(--verse-gold-light)" : "transparent",
-                    }}
-                  >
-                    {e}
-                  </span>
-                )) : (
-                  <span className="text-xs text-muted-foreground italic">No entities extracted</span>
-                )}
-              </div>
-            </div>
-          </Card>
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 rounded-xl border" style={{ borderColor: "var(--border)", background: "var(--muted)" }}>
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-semibold transition-all"
+            style={activeTab === t.key
+              ? { background: "white", color: "var(--verse-midnight)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
+              : { color: "var(--muted-foreground)" }}
+          >
+            {t.label}
+            <span className="inline-flex items-center justify-center rounded-md min-w-[18px] h-[18px] px-1 text-[10px] font-bold"
+              style={activeTab === t.key
+                ? { background: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }
+                : { background: "transparent", color: "var(--muted-foreground)" }}>
+              {t.count}
+            </span>
+          </button>
         ))}
-
-        {/* Empty state — shown before the first upload */}
-        {!isLive && !uploadResult && (
-          <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-14 gap-3" style={{ borderColor: "rgba(124,58,237,0.2)" }}>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--verse-violet-light)" }}>
-              <FileText size={24} style={{ color: "var(--verse-violet)" }} />
-            </div>
-            <p className="font-bold text-foreground text-sm" style={{ fontFamily: "var(--font-display)" }}>Upload your screenplay to begin</p>
-            <p className="text-xs text-muted-foreground text-center max-w-xs">Supports .pdf, .txt, .fountain, and .fdx formats. VERSE will extract all scenes, characters, props, and timeline data automatically.</p>
-            <button onClick={openFilePicker} className="mt-1 flex items-center gap-2 h-9 text-sm font-semibold px-4 rounded-lg" style={{ backgroundColor: "var(--verse-midnight)", color: "white" }}>
-              <Upload size={14} /> Choose File
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* ── SCENES TAB ─────────────────────────────────────────────────── */}
+      {activeTab === "scenes" && (
+        <div className="flex flex-col gap-3">
+          {scenes.length === 0 && !uploading && !analysing && (
+            <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-14 gap-3" style={{ borderColor: "rgba(124,58,237,0.2)" }}>
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "var(--verse-violet-light)" }}>
+                <FileText size={24} style={{ color: "var(--verse-violet)" }} />
+              </div>
+              <p className="font-bold text-foreground text-sm" style={{ fontFamily: "var(--font-display)" }}>Upload your screenplay to begin</p>
+              <p className="text-xs text-muted-foreground text-center max-w-xs">Supports .pdf, .txt, .fountain, and .fdx formats.</p>
+              <button onClick={openFilePicker} className="mt-1 flex items-center gap-2 h-9 text-sm font-semibold px-4 rounded-lg" style={{ backgroundColor: "var(--verse-midnight)", color: "white" }}>
+                <Upload size={14} /> Choose File
+              </button>
+            </div>
+          )}
+          {scenes.map((sv, i) => {
+            const entityNames = sv.entities.map((e) => e.name).filter(Boolean);
+            const tags = entityNames.length > 0 ? entityNames : synthesizeFromScene(sv);
+            const hasConflict = (sv.issue_count ?? 0) > 0;
+            return (
+              <Card key={sv.scene_id ?? i}>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold tabular-nums flex-shrink-0 rounded px-1.5 py-0.5" style={{ background: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>
+                      #{sv.sequence || i + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-foreground text-sm leading-tight truncate" style={{ fontFamily: "var(--font-display)" }}>
+                        {sv.slugline ?? sv.scene_id}
+                      </h3>
+                      {sv.headline && <p className="text-xs text-muted-foreground truncate mt-0.5">{sv.headline}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                    {sv.fact_count > 0 && (
+                      <span className="text-[10px] text-muted-foreground">{sv.fact_count} facts</span>
+                    )}
+                    {sv.score > 0 && <ScorePill value={Math.round(sv.score)} />}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.length > 0 ? tags.map((e) => (
+                    <span key={e} className="text-[11px] px-2 py-0.5 rounded-lg border"
+                      style={{
+                        borderColor: hasConflict ? "rgba(154,111,0,0.3)" : "var(--border)",
+                        color:       hasConflict ? "var(--verse-gold)"   : "var(--muted-foreground)",
+                        background:  hasConflict ? "var(--verse-gold-light)" : "transparent",
+                      }}>
+                      {e}
+                    </span>
+                  )) : (
+                    <span className="text-xs text-muted-foreground italic">No entities</span>
+                  )}
+                  {hasConflict && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-lg border font-semibold" style={{ borderColor: "rgba(154,111,0,0.3)", color: "var(--verse-gold)", background: "var(--verse-gold-light)" }}>
+                      ⚠ {sv.issue_count} issue{sv.issue_count !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── CHARACTERS TAB ─────────────────────────────────────────────── */}
+      {activeTab === "characters" && (
+        <div className="flex flex-col gap-3">
+          {liveChars.length === 0 ? (
+            <EmptyState icon={Users} title="No characters extracted yet"
+              description={isLive ? "No characters were found in the production knowledge graph. Check the Scenes tab to see raw entity names extracted from the PDF." : "Upload a screenplay to extract character data."} />
+          ) : (
+            liveChars.map((ev) => {
+              const initials = ev.entity.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+              const sceneCount = ev.scene_ids.length;
+              const attrList = ev.attributes.length > 0 ? ev.attributes.join(", ") : null;
+              const hasIssue = ev.conflict_count > 0;
+              return (
+                <Card key={ev.entity.key}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl font-bold text-sm flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>
+                      {initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-bold text-foreground">{ev.entity.name}</p>
+                        {hasIssue && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: "var(--verse-gold-light)", color: "var(--verse-gold)" }}>
+                            {ev.conflict_count} conflict{ev.conflict_count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {sceneCount > 0 ? `Appears in ${sceneCount} scene${sceneCount !== 1 ? "s" : ""}` : "Scene data pending"}
+                        {attrList ? ` · Tracked: ${attrList}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-bold tabular-nums" style={{ color: "var(--verse-midnight)" }}>{ev.fact_count}</p>
+                      <p className="text-[10px] text-muted-foreground">facts</p>
+                    </div>
+                  </div>
+                  {/* Latest tracked attribute values */}
+                  {Object.keys(ev.latest).length > 0 && (
+                    <div className="mt-3 pt-3 border-t flex flex-wrap gap-2" style={{ borderColor: "var(--border)" }}>
+                      {Object.entries(ev.latest).map(([attr, val]) => (
+                        <span key={attr} className="text-[11px] px-2 py-0.5 rounded-lg border" style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
+                          <span className="font-semibold text-foreground">{attr}:</span> {String(val)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* ── PROPS TAB ──────────────────────────────────────────────────── */}
+      {activeTab === "props" && (
+        <div className="flex flex-col gap-3">
+          {liveProps.length === 0 ? (
+            <EmptyState icon={Layers} title="No props extracted yet"
+              description={isLive ? "No prop entities found — the engine may classify props differently. Check the Scenes tab." : "Upload a screenplay to extract prop data."} />
+          ) : (
+            liveProps.map((ev) => {
+              const sceneCount = ev.scene_ids.length;
+              const hasIssue = ev.conflict_count > 0;
+              const statusColor = hasIssue ? "var(--verse-gold)" : ev.fact_count > 0 ? "var(--verse-emerald)" : "#64748B";
+              const statusLabel = hasIssue ? "Flagged" : ev.fact_count > 0 ? "Tracked" : "Listed";
+              return (
+                <Card key={ev.entity.key}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: "var(--verse-violet-light)" }}>
+                      <Layers size={16} style={{ color: "var(--verse-violet)" }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-foreground">{ev.entity.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {sceneCount > 0
+                          ? `In ${sceneCount} scene${sceneCount !== 1 ? "s" : ""}`
+                          : "Scene data pending"}
+                        {ev.fact_count > 0 ? ` · ${ev.fact_count} facts` : ""}
+                      </p>
+                    </div>
+                    <span className="text-xs font-bold flex-shrink-0" style={{ color: statusColor }}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                  {Object.keys(ev.latest).length > 0 && (
+                    <div className="mt-3 pt-3 border-t flex flex-wrap gap-2" style={{ borderColor: "var(--border)" }}>
+                      {Object.entries(ev.latest).map(([attr, val]) => (
+                        <span key={attr} className="text-[11px] px-2 py-0.5 rounded-lg border" style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}>
+                          <span className="font-semibold text-foreground">{attr}:</span> {String(val)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              );
+            })
+          )}
+          {/* Locations sub-section — shown inside the Props tab when present */}
+          {locEntities.length > 0 && (
+            <>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2 px-1">Locations</p>
+              {locEntities.map((ev) => (
+                <Card key={ev.entity.key}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: "#EFF6FF" }}>
+                      <Globe size={16} style={{ color: "#3B82F6" }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-foreground">{ev.entity.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {ev.scene_ids.length > 0 ? `${ev.scene_ids.length} scenes` : "Listed"}
+                        {ev.fact_count > 0 ? ` · ${ev.fact_count} facts` : ""}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TIMELINE TAB ───────────────────────────────────────────────── */}
+      {activeTab === "timeline" && (
+        <div className="flex flex-col gap-2">
+          {scenes.length === 0 ? (
+            <EmptyState icon={Clock} title="No timeline yet" description="Upload a screenplay to generate the scene timeline." />
+          ) : (
+            <>
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <div className="grid text-[11px] font-bold text-muted-foreground uppercase tracking-wide px-4 py-2.5 border-b"
+                  style={{ gridTemplateColumns: "3rem 1fr 6rem 5rem 4rem", borderColor: "var(--border)", background: "var(--muted)" }}>
+                  <span>#</span>
+                  <span>Scene</span>
+                  <span>Location</span>
+                  <span>Time</span>
+                  <span className="text-right">Score</span>
+                </div>
+                {scenes.map((sv, i) => {
+                  const hasConflict = (sv.issue_count ?? 0) > 0;
+                  return (
+                    <div key={sv.scene_id ?? i}
+                      className="grid items-center px-4 py-3 border-b last:border-0 hover:bg-muted/40 transition-colors text-sm"
+                      style={{ gridTemplateColumns: "3rem 1fr 6rem 5rem 4rem", borderColor: "var(--border)" }}>
+                      <span className="text-xs font-bold tabular-nums" style={{ color: "var(--verse-violet)" }}>
+                        {sv.sequence || i + 1}
+                      </span>
+                      <div className="min-w-0 pr-2">
+                        <p className="font-medium text-foreground truncate text-xs leading-tight">
+                          {sv.slugline ?? sv.scene_id}
+                        </p>
+                        {sv.headline && (
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{sv.headline}</p>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-muted-foreground truncate">
+                        {sv.location ?? "—"}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {sv.time_of_day ?? "—"}
+                      </span>
+                      <div className="text-right">
+                        {sv.score > 0 ? (
+                          <span className="text-xs font-bold tabular-nums"
+                            style={{ color: hasConflict ? "var(--verse-gold)" : "var(--verse-emerald)" }}>
+                            {Math.round(sv.score)}%
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground text-right px-1">
+                {scenes.length} scenes · ordered by screenplay sequence
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2184,58 +2747,87 @@ function SceneTimeline({ projectId }: { projectId?: string }) {
   );
 }
 
-function AIAlerts({ onAIAction }: { onAIAction: (id: string, action: "accept" | "dismiss") => void }) {
+function AIAlerts({ onAIAction, projectId }: { onAIAction: (id: string, action: "accept" | "dismiss") => void; projectId?: string }) {
+  const [liveRecs, setLiveRecs] = React.useState<Array<{ id: string; severity: "critical"|"warning"|"info"; scene: string; issue: string; confidence: number; suggestion: string; timestamp: string }> | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const scan = React.useCallback(() => {
+    if (!projectId) { setLoading(false); return; }
+    setLoading(true);
+    apiContinuity.issues(projectId).then((issues) => {
+      setLiveRecs(issues.map((i) => ({
+        id: i.issue_id, severity: toDisplaySeverity(i.severity),
+        scene: i.scene_id ?? "—", issue: i.explanation || i.attribute,
+        confidence: Math.round(i.confidence * 100),
+        suggestion: i.suggested_fix || "Review the flagged scene.",
+        timestamp: "Just now",
+      })));
+    }).catch(() => setLiveRecs([])).finally(() => setLoading(false));
+  }, [projectId]);
+  React.useEffect(() => { scan(); }, [scan]);
+
+  const alerts = liveRecs ?? [];
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={<span>AI <span style={{ color: "var(--verse-red)" }}>Alerts</span></span>} subtitle="Real-time continuity alerts generated by the VERSE AI engine." actions={<Btn variant="primary" icon={RefreshCw} onClick={() => toast.loading("Scanning for new alerts…")}>Scan Now</Btn>} />
+      <PageHeader title={<span>AI <span style={{ color: "var(--verse-red)" }}>Alerts</span></span>} subtitle="Real-time continuity alerts generated by the VERSE AI engine." actions={<Btn variant="primary" icon={RefreshCw} onClick={scan}>Scan Now</Btn>} />
       <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Critical Alerts" value={1} icon={AlertTriangle} color="var(--verse-red)" />
-        <StatCard label="Warnings" value={2} icon={Zap} color="var(--verse-gold)" />
-        <StatCard label="AI Confidence" value="96%" icon={Brain} color="var(--verse-violet)" />
+        <StatCard label="Critical Alerts" value={alerts.filter(a => a.severity === "critical").length || "—"} icon={AlertTriangle} color="var(--verse-red)" />
+        <StatCard label="Warnings" value={alerts.filter(a => a.severity === "warning").length || "—"} icon={Zap} color="var(--verse-gold)" />
+        <StatCard label="Total" value={alerts.length || "—"} icon={Brain} color="var(--verse-violet)" />
       </div>
-      <div className="flex flex-col gap-3">
-        {aiRecommendations.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
-      </div>
+      {loading ? (
+        <div className="text-center py-12 text-sm text-muted-foreground">Scanning for alerts…</div>
+      ) : alerts.length === 0 ? (
+        <EmptyState icon={AlertTriangle} title="No alerts" description="Upload a screenplay and run analysis to detect continuity issues." />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {alerts.map((rec) => <AIRecommendationCard key={rec.id} rec={rec} onAction={onAIAction} />)}
+        </div>
+      )}
     </div>
   );
 }
 
-function NarrativeProgression() {
-  const acts = [
-    { label: "Act 1 — Setup", scenes: "Scenes 1–15", status: "Complete", completion: 100, color: "var(--verse-emerald)" },
-    { label: "Act 2A — Conflict Begins", scenes: "Scenes 16–28", status: "In Progress", completion: 70, color: "var(--verse-violet)" },
-    { label: "Act 2B — Rising Action", scenes: "Scenes 29–38", status: "Upcoming", completion: 0, color: "#CBD5E1" },
-    { label: "Act 3 — Resolution", scenes: "Scenes 39–47", status: "Upcoming", completion: 0, color: "#CBD5E1" },
-  ];
+function NarrativeProgression({ projectId }: { projectId?: string }) {
+  const { scenes: liveScenes, overview } = useSceneViews(projectId ?? null);
+  const isLive = liveScenes.length > 0;
+  const total = overview?.scenes_total ?? 0;
+  const shot = overview?.scenes_shot ?? 0;
+  const progress = total > 0 ? Math.round((shot / total) * 100) : 0;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Narrative Progression" subtitle="Story structure and semantic progression analysis." />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Acts Completed" value="1/3" icon={BookOpen} color="var(--verse-midnight)" />
-        <StatCard label="Scenes Filmed" value="34/47" icon={Film} color="var(--verse-emerald)" />
-        <StatCard label="Story Progress" value="72%" icon={TrendingUp} color="var(--verse-violet)" />
-        <StatCard label="Narrative Score" value="91%" icon={Star} color="var(--verse-gold)" />
+        <StatCard label="Total Scenes" value={total || "—"} icon={BookOpen} color="var(--verse-midnight)" />
+        <StatCard label="Scenes Shot" value={shot || "—"} icon={Film} color="var(--verse-emerald)" />
+        <StatCard label="Story Progress" value={total > 0 ? `${progress}%` : "—"} icon={TrendingUp} color="var(--verse-violet)" />
+        <StatCard label="Avg. Score" value={overview?.average_scene_score != null ? `${overview.average_scene_score}%` : "—"} icon={Star} color="var(--verse-gold)" />
       </div>
-      <Card>
-        <SectionTitle>Story Arc Completion</SectionTitle>
-        <div className="flex flex-col gap-4">
-          {acts.map((act) => (
-            <div key={act.label}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div>
-                  <p className="text-sm font-bold text-foreground">{act.label}</p>
-                  <p className="text-xs text-muted-foreground">{act.scenes}</p>
+      {isLive ? (
+        <Card>
+          <SectionTitle>Scene Progression</SectionTitle>
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex-1"><ProgressBar value={progress} color="var(--verse-midnight)" /></div>
+            <span className="text-sm font-bold text-muted-foreground">{shot}/{total}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {liveScenes.map((s) => {
+              const status = sceneStatus(s);
+              const color = status === "Logged" ? "var(--verse-emerald)" : status === "Flagged" ? "var(--verse-red)" : "#CBD5E1";
+              return (
+                <div key={s.scene_id} className="flex items-center gap-3 p-2 rounded-lg border text-xs" style={{ borderColor: "var(--border)" }}>
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="font-mono text-muted-foreground w-24 flex-shrink-0">{s.scene_id.replace(/_/g, " ")}</span>
+                  <span className="flex-1 truncate text-foreground">{s.slugline ?? s.location ?? "—"}</span>
+                  {s.score > 0 && <ScorePill value={Math.round(s.score)} />}
                 </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge label={act.status} color={act.color} bg={`color-mix(in srgb, ${act.color} 12%, white)`} />
-                  <span className="text-sm font-black" style={{ fontFamily: "var(--font-display)", color: act.color }}>{act.completion}%</span>
-                </div>
-              </div>
-              <ProgressBar value={act.completion} color={act.color} />
-            </div>
-          ))}
-        </div>
-      </Card>
+              );
+            })}
+          </div>
+        </Card>
+      ) : (
+        <EmptyState icon={TrendingUp} title="No screenplay yet" description="Upload a screenplay to visualise narrative progression." />
+      )}
     </div>
   );
 }
@@ -2244,49 +2836,63 @@ function NarrativeProgression() {
 // CONTINUITY SUPERVISOR PAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ContinuitySupervisorOverview({ productionName }: { productionName: string }) {
+function ContinuitySupervisorOverview({ productionName, projectId }: { productionName: string; projectId?: string }) {
+  const { entities: charEntities } = useEntityViews(projectId ?? null, { entityType: "character", attribute: "wears" });
+  const { entities: propEntities } = useEntityViews(projectId ?? null, { entityType: "prop" });
+  const { overview } = useSceneViews(projectId ?? null);
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Continuity Supervisor" subtitle={`Asset continuity workspace for ${productionName}.`} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Costumes Tracked" value={24} icon={Eye} color="var(--verse-midnight)" />
-        <StatCard label="Props Logged" value={47} icon={Layers} color="var(--verse-violet)" />
-        <StatCard label="Verified Scenes" value="29/34" icon={CheckCircle} color="var(--verse-emerald)" />
-        <StatCard label="Open Issues" value={3} icon={AlertTriangle} color="var(--verse-gold)" />
+        <StatCard label="Costumes Tracked" value={charEntities?.length ?? "—"} icon={Eye} color="var(--verse-midnight)" />
+        <StatCard label="Props Tracked" value={propEntities?.length ?? "—"} icon={Layers} color="var(--verse-violet)" />
+        <StatCard label="Scenes Clean" value={overview?.scenes_clean ?? "—"} icon={CheckCircle} color="var(--verse-emerald)" />
+        <StatCard label="Open Issues" value={overview?.issues_total ?? "—"} icon={AlertTriangle} color="var(--verse-gold)" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Card>
-          <SectionTitle>Costume Continuity</SectionTitle>
-          {characters.map((c) => (
-            <div key={c.id} className="flex items-center gap-3 py-2 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
-              <div className="w-8 h-8 rounded-lg font-bold text-xs flex items-center justify-center" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>{c.name.split(" ").map((n: string) => n[0]).join("")}</div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-foreground">{c.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{c.lastCostume}</p>
-              </div>
-              <ScorePill value={c.continuityScore} />
-            </div>
-          ))}
-        </Card>
-        <Card>
-          <SectionTitle>Recent Verifications</SectionTitle>
-          <div className="flex flex-col gap-3">
-            {[
-              { item: "Elena's Navy Jacket", scene: "Scene 23", result: "✓ Verified", color: "var(--verse-emerald)" },
-              { item: "Marcus's Watch", scene: "Scene 31", result: "⚠ Flagged", color: "var(--verse-gold)" },
-              { item: "Lab Coat — Dr. Park", scene: "Scene 18", result: "✓ Verified", color: "var(--verse-emerald)" },
-              { item: "Coffee Mug (hero prop)", scene: "Scene 17", result: "✓ Verified", color: "var(--verse-emerald)" },
-            ].map((v) => (
-              <div key={v.item} className="flex items-center gap-3 text-sm">
-                <div className="flex-1">
-                  <p className="font-medium text-foreground">{v.item}</p>
-                  <p className="text-xs text-muted-foreground">{v.scene}</p>
+        {charEntities && charEntities.length > 0 ? (
+          <Card>
+            <SectionTitle>Costume Continuity</SectionTitle>
+            {charEntities.slice(0, 6).map((view) => {
+              const summary = summariseEntity(view, "wears");
+              return (
+                <div key={view.entity.key} className="flex items-center gap-3 py-2 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
+                  <div className="w-8 h-8 rounded-lg font-bold text-xs flex items-center justify-center" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>{view.entity.name.split(" ").map((n: string) => n[0]).join("")}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{view.entity.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{summary.current !== "—" ? summary.current : "No costume data yet"}</p>
+                  </div>
+                  {summary.continuity > 0 && <ScorePill value={summary.continuity} />}
                 </div>
-                <span className="text-xs font-bold" style={{ color: v.color }}>{v.result}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
+              );
+            })}
+          </Card>
+        ) : (
+          <EmptyState icon={Eye} title="No costume data yet" description="Upload footage to compare costumes against the screenplay." />
+        )}
+        {propEntities && propEntities.length > 0 ? (
+          <Card>
+            <SectionTitle>Prop Continuity</SectionTitle>
+            <div className="flex flex-col gap-3">
+              {propEntities.slice(0, 4).map((view) => {
+                const summary = summariseEntity(view);
+                const stColor = summary.status === "Verified" ? "var(--verse-emerald)" : summary.status === "Issue" ? "var(--verse-gold)" : "#64748B";
+                return (
+                  <div key={view.entity.key} className="flex items-center gap-3 text-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground">{view.entity.name}</p>
+                      <p className="text-xs text-muted-foreground">{summary.scenes || "—"}</p>
+                    </div>
+                    <span className="text-xs font-bold flex-shrink-0" style={{ color: stColor }}>{summary.status === "Verified" ? "✓ Verified" : summary.status === "Issue" ? "⚠ Flagged" : "Pending"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        ) : (
+          <EmptyState icon={Layers} title="No prop data yet" description="Upload footage to track props against the screenplay." />
+        )}
       </div>
     </div>
   );
@@ -3456,7 +4062,7 @@ function DashboardContent({
         case "Production Timeline": return <DirectorTimeline />;
         case "AI Recommendations": return <DirectorAIRecs onAIAction={onAIAction} />;
         case "Semantic Memory": return <DirectorSemanticMemory />;
-        default: return <DirectorOverview productionName={productionName} onAIAction={onAIAction} />;
+        default: return <DirectorOverview productionName={productionName} onAIAction={onAIAction} projectId={projectId} />;
       }
 
     case "script-supervisor":
@@ -3464,9 +4070,9 @@ function DashboardContent({
         case "Continuity Tracking": return <ContinuityTracking projectId={projectId} />;
         case "Screenplay Analysis": return <ScreenplayAnalysis projectId={projectId} />;
         case "Scene Timeline": return <SceneTimeline projectId={projectId} />;
-        case "AI Alerts": return <AIAlerts onAIAction={onAIAction} />;
-        case "Narrative Progression": return <NarrativeProgression />;
-        default: return <ScriptSupervisorOverview productionName={productionName} onAIAction={onAIAction} />;
+        case "AI Alerts": return <AIAlerts onAIAction={onAIAction} projectId={projectId} />;
+        case "Narrative Progression": return <NarrativeProgression projectId={projectId} />;
+        default: return <ScriptSupervisorOverview productionName={productionName} onAIAction={onAIAction} projectId={projectId} />;
       }
 
     case "continuity-supervisor":
