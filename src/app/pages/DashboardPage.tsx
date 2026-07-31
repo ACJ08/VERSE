@@ -1943,38 +1943,36 @@ function ScriptSupervisorOverview({ productionName, onAIAction, projectId }: { p
 function ContinuityTracking({ projectId }: { projectId?: string }) {
   const [showLog, setShowLog] = useState(false);
   const [newIssueDesc, setNewIssueDesc] = useState("");
-  const mockIssues = [
-    { id: "ci1", scene: "Scene 18", type: "Timeline", desc: "References 'Tuesday morning' but Scene 17 established 'Monday evening'.", severity: "critical", resolved: false, live: false },
-    { id: "ci2", scene: "Scene 23", type: "Costume", desc: "Elena's jacket changes from navy to black between shots 23A and 23C.", severity: "warning", resolved: false, live: false },
-    { id: "ci3", scene: "Scene 31", type: "Prop", desc: "Marcus's watch absent in shots 31B–31D.", severity: "warning", resolved: false, live: false },
-    { id: "ci4", scene: "Scene 17", type: "Dialogue", desc: "Minor inconsistency in coffee cup position during dialogue exchange.", severity: "info", resolved: true, live: false },
-  ];
-  const [issues, setIssues] = useState(mockIssues);
+  const [issues, setIssues] = useState<Array<{ id: string; scene: string; type: string; desc: string; severity: string; resolved: boolean; live: boolean }>>([]);
   const [isLive, setIsLive] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [engineError, setEngineError] = useState<string | null>(null);
 
   // Converts a ContinuityIssue from the engine into the display shape.
-  const mapIssue = (i: { issue_id: string; scene_id: string | null; category: string; explanation: string; attribute: string; expected: { value: unknown }; observed: { value: unknown }; severity: string; status: string }) => ({
+  const mapIssue = (i: { issue_id: string; scene_id: string | null; category: string; explanation: string; attribute: string; expected: { value: unknown } | null; observed: { value: unknown } | null; severity: string; status: string }) => ({
     id: i.issue_id,
     scene: i.scene_id ?? "—",
-    type: i.category,
-    desc: i.explanation || `${i.attribute}: expected ${String(i.expected.value)}, observed ${String(i.observed.value)}`,
+    type: i.category ?? "General",
+    desc: i.explanation || `${i.attribute ?? "attribute"}: expected ${String(i.expected?.value ?? "—")}, observed ${String(i.observed?.value ?? "—")}`,
     severity: i.severity === "critical" ? "critical" : i.severity === "low" ? "info" : ("warning" as "critical" | "warning" | "info"),
     resolved: i.status === "resolved" || i.status === "dismissed",
     live: true,
   });
 
-  // Fetch live issues from the engine; fall back to mock data when offline.
+  // Fetch live issues from the engine; surfaces errors instead of silently keeping stale mock data.
   const fetchIssues = React.useCallback(() => {
     if (!projectId) return;
     setLoading(true);
+    setEngineError(null);
     apiContinuity.issues(projectId)
-      .then((live) => {
-        if (!live.length) { setLoading(false); return; }
+      .then((liveIssues) => {
         setIsLive(true);
-        setIssues(live.map(mapIssue));
+        setIssues(liveIssues.map(mapIssue));
       })
-      .catch(() => { /* backend offline — keep the mock issues */ })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        setEngineError(msg);
+      })
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
@@ -2027,6 +2025,18 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
         </div>
       )}
 
+      {/* Engine error — surface the real reason instead of silently showing nothing */}
+      {!loading && engineError && (
+        <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: "rgba(239,68,68,0.25)", background: "#FEF2F2" }}>
+          <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{ color: "var(--verse-red)" }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: "var(--verse-red)" }}>Could not reach the continuity engine</p>
+            <p className="text-xs text-muted-foreground mt-0.5 break-words">{engineError}</p>
+          </div>
+          <Btn variant="secondary" icon={RefreshCw} onClick={fetchIssues}>Retry</Btn>
+        </div>
+      )}
+
       {showLog && (
         <div className="rounded-2xl border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)", background: "white" }}>
           <p className="text-sm font-bold text-foreground">Log New Issue</p>
@@ -2045,6 +2055,17 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
       </div>
 
       <div className="flex flex-col gap-3">
+        {!loading && !engineError && issues.length === 0 && (
+          <EmptyState
+            icon={CheckCircle}
+            title={isLive ? "No issues detected" : "No project selected"}
+            description={
+              isLive
+                ? "The continuity engine found no open issues. Upload a screenplay to generate AI-powered continuity checks."
+                : "Select a project to load live continuity issues from the engine."
+            }
+          />
+        )}
         {issues.map((issue) => {
           const s = sev[issue.severity as keyof typeof sev];
           return (
