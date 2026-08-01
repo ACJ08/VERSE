@@ -37,6 +37,7 @@ except ImportError:
     pass  # python-dotenv not installed — rely on shell environment variables
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from main import build_observations
 from src.frame_extractor import extract_frames
@@ -59,6 +60,25 @@ app = FastAPI(
         "observations out. Wraps the vision_pipeline CLI."
     ),
     version="0.1.0",
+)
+
+# ─── CORS ─────────────────────────────────────────────────────────────────────
+_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",   # Continuity engine (server-to-server)
+]
+_extra = os.getenv("CORS_ORIGINS", "")
+if _extra:
+    _CORS_ORIGINS.extend(o.strip() for o in _extra.split(",") if o.strip())
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ─── Model cache ──────────────────────────────────────────────────────────────
