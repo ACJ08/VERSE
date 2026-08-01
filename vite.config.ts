@@ -57,6 +57,7 @@ export default defineConfig({
   // corresponding FastAPI router is mounted in continuity-engine/main.py.
   server: {
     proxy: {
+      // ── Continuity Engine (port 8000) ───────────────────────────────────
       // Proxy all /auth/* API routes to the backend EXCEPT /auth/callback,
       // which is the frontend SPA landing page for the Google OAuth redirect.
       '^/auth/(?!callback)': { target: 'http://localhost:8000', changeOrigin: true },  // POST /auth/login, /auth/register, …
@@ -64,6 +65,14 @@ export default defineConfig({
       '/projects':    { target: 'http://localhost:8000', changeOrigin: true },  // CRUD /projects, /projects/{id}/team
       '/continuity':  { target: 'http://localhost:8000', changeOrigin: true },  // POST /continuity/analyse, /continuity/ingest/*
       '/health':      { target: 'http://localhost:8000', changeOrigin: true },  // GET  /health  (BackendStatusBadge)
+      // ── Script Intelligence (port 8100) ─────────────────────────────────
+      // Proxied under /script-api so the browser avoids CORS pre-flight when
+      // VITE_SCRIPT_API_URL is empty (same-origin dev mode).
+      // api.ts reads VITE_SCRIPT_API_URL and falls back to empty string →
+      // same-origin → hits this proxy entry.
+      '/script-api':  { target: 'http://localhost:8100', changeOrigin: true, rewrite: (p) => p.replace(/^\/script-api/, '') },
+      // ── Vision Pipeline (port 8200) ──────────────────────────────────────
+      '/vision-api':  { target: 'http://localhost:8200', changeOrigin: true, rewrite: (p) => p.replace(/^\/vision-api/, '') },
     },
   },
 
