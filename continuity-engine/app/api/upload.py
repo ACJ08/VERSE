@@ -85,12 +85,13 @@ def _extract_text(filename: str, data: bytes) -> str:
 def _granite_extract(text: str, project_id: str) -> dict | None:
     """
     Use IBM Granite to extract structured scenes from raw screenplay text.
+    Supports both the IBM watsonx cloud API and a local llama-cpp-python server.
     Returns a script-JSON dict on success, or None if Granite is unavailable.
     """
     try:
-        from app.services.watsonx import WatsonxAdapter
-        llm = WatsonxAdapter()
-        if not llm.is_available:
+        from app.services.watsonx import create_llm
+        llm = create_llm()
+        if llm is None:
             return None
     except ImportError:
         return None
