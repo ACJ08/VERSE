@@ -25,13 +25,14 @@ from typing import List, Optional
 import httpx
 
 from app.schemas.continuity import SceneContinuity
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Allow override via env — defaults to the continuity-engine dev address.
-_ENGINE_BASE_URL = os.getenv("CONTINUITY_ENGINE_URL", "http://localhost:8000").rstrip("/")
-_ENGINE_TOKEN = os.getenv("CONTINUITY_ENGINE_TOKEN", "")
-_HTTP_TIMEOUT = float(os.getenv("CONTINUITY_ENGINE_TIMEOUT", "30"))
+# Allow override via env — defaults from core settings which read from .env.
+_ENGINE_BASE_URL = settings.CONTINUITY_ENGINE_URL
+_ENGINE_TOKEN = settings.CONTINUITY_ENGINE_TOKEN
+_HTTP_TIMEOUT = float(os.getenv("CONTINUITY_ENGINE_TIMEOUT", "60"))
 
 
 def _scene_continuity_to_engine_payload(
