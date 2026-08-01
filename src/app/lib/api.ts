@@ -455,9 +455,10 @@ export const system = {
 
 // ─── Script Intelligence ──────────────────────────────────────────────────────
 // Points at the script-intelligence FastAPI service (VITE_SCRIPT_API_URL in .env.local).
-// Falls back to same-origin (empty string) when unset.
+// In dev mode falls back to /script-api which the Vite proxy rewrites to http://localhost:8100.
+// In production set VITE_SCRIPT_API_URL to the full service URL.
 
-const SCRIPT_BASE = (import.meta.env.VITE_SCRIPT_API_URL as string) ?? "";
+const SCRIPT_BASE: string = (import.meta.env.VITE_SCRIPT_API_URL as string) || "/script-api";
 
 export interface SceneAnalysis {
   metadata: {
