@@ -73,10 +73,17 @@ export default function App() {
         UserStore.set({ id: "", email, name, role, verified: 1, created_at: "" });
         // Clean up the URL — remove the sensitive token from the address bar
         window.history.replaceState({}, "", "/");
+        const resolvedRole = resolveRoleFromLabel(role);
+        // If Google OAuth assigned the default "producer" role and there is no
+        // prior onboarding record, send the user through role-selection so they
+        // can choose their actual role. This is detected by the role being the
+        // raw backend default ("producer") which is always assigned on first
+        // OAuth sign-in before the user has completed onboarding.
+        const isDefaultRole = role === "producer" && !resolvedRole;
         return {
-          currentView: "dashboard",
+          currentView: isDefaultRole ? "role-selection" : "dashboard",
           userEmail: email, userName: name,
-          selectedRole: resolveRoleFromLabel(role) ?? "producer",
+          selectedRole: resolvedRole ?? "producer",
           selectedProductionType: null, productionName: "The Last Scene",
         };
       }

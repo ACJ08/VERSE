@@ -650,28 +650,32 @@ function DashboardSidebar({
 
 function DashboardTopNav({
   productionName, onMobileMenuToggle, activeRole, onRoleChange, onRunAIAnalysis,
+  projects: projectList, activeProjectId, onProjectChange,
 }: {
   productionName: string; onMobileMenuToggle: () => void;
   activeRole: UserRole; onRoleChange: (r: UserRole) => void;
   onRunAIAnalysis: () => void;
+  projects: Project[]; activeProjectId: string | undefined;
+  onProjectChange: (id: string) => void;
 }) {
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [notifCount, setNotifCount] = useState(4);
   const [searchVal, setSearchVal] = useState("");
   const currentRoleLabel = userRoles.find((r) => r.id === activeRole)?.title ?? "Role";
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const projectDropdownRef = React.useRef<HTMLDivElement>(null);
+  const activeProject = projectList.find((p) => p.id === activeProjectId);
 
-  // Close role dropdown when user clicks outside of it
+  // Close dropdowns when clicking outside
   React.useEffect(() => {
-    if (!showRoleDropdown) return;
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowRoleDropdown(false);
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowRoleDropdown(false);
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) setShowProjectDropdown(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [showRoleDropdown]);
+  }, []);
 
   return (
     <header className="h-16 border-b flex items-center gap-4 px-5 flex-shrink-0" style={{ background: "linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)", borderColor: "rgba(209,205,242,0.9)" }}>
@@ -679,11 +683,44 @@ function DashboardTopNav({
         <Menu size={20} />
       </button>
 
-      <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
-        <span className="font-semibold text-foreground truncate">{productionName}</span>
-        <ChevronRight size={13} className="flex-shrink-0" />
-        <span className="hidden sm:block">Dashboard</span>
-      </div>
+      {/* Project switcher — shown only when there are projects loaded */}
+      {projectList.length > 0 ? (
+        <div className="relative" ref={projectDropdownRef}>
+          <button
+            onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+            className="flex items-center gap-1.5 h-9 text-sm font-semibold px-3 rounded-lg transition-colors max-w-[200px]"
+            style={{ background: "white", border: "1px solid var(--border)", color: "var(--foreground)" }}
+          >
+            <Film size={13} className="text-muted-foreground flex-shrink-0" />
+            <span className="truncate">{activeProject?.name ?? productionName}</span>
+            <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
+          </button>
+          {showProjectDropdown && (
+            <div className="absolute left-0 top-full mt-2 w-64 border rounded-xl shadow-lg z-50 py-1 overflow-hidden" style={{ background: "white", borderColor: "var(--border)" }}>
+              <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground px-3 py-2 border-b" style={{ borderColor: "var(--border)" }}>Switch Production</p>
+              {projectList.map((proj) => (
+                <button
+                  key={proj.id}
+                  onClick={() => { onProjectChange(proj.id); setShowProjectDropdown(false); toast.success(`Switched to "${proj.name}"`); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors text-left ${proj.id === activeProjectId ? "bg-primary/5 text-primary font-semibold" : "text-foreground hover:bg-muted"}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate">{proj.name}</p>
+                    <p className="text-xs text-muted-foreground">{proj.production_type ?? "Film"} · {proj.scenes_total} scenes</p>
+                  </div>
+                  {proj.id === activeProjectId && <CheckCircle size={13} className="ml-auto text-primary flex-shrink-0" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
+          <span className="font-semibold text-foreground truncate">{productionName}</span>
+          <ChevronRight size={13} className="flex-shrink-0" />
+          <span className="hidden sm:block">Dashboard</span>
+        </div>
+      )}
 
       <div className="flex-1" />
 
@@ -1010,7 +1047,7 @@ function ProducerOverview({ productionName, onAIAction, projectId, userName }: {
   );
 }
 
-function ProducerProductions() {
+function ProducerProductions({ onOpenProject }: { onOpenProject?: (id: string) => void }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [liveProjects, setLiveProjects] = React.useState<Project[] | null>(null);
@@ -1065,7 +1102,7 @@ function ProducerProductions() {
                 </div>
                 {proj.description && <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{proj.description}</p>}
                 <div className="flex gap-2">
-                  <button onClick={() => toast.info(`Opening ${proj.name} workspace…`)} className="flex-1 h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>Open Workspace</button>
+                  <button onClick={() => { if (onOpenProject) { onOpenProject(proj.id); toast.success(`Switched to "${proj.name}"`); } else { toast.info(`Opening ${proj.name} workspace…`); } }} className="flex-1 h-8 text-xs font-bold rounded-lg" style={{ backgroundColor: "var(--verse-midnight-light)", color: "var(--verse-midnight)" }}>Open Workspace</button>
                   <button onClick={() => toast.info("Opening analytics…")} className="h-8 w-8 rounded-lg flex items-center justify-center border hover:bg-muted transition-colors" style={{ borderColor: "var(--border)" }}><BarChart3 size={13} className="text-muted-foreground" /></button>
                 </div>
               </Card>
@@ -1728,15 +1765,35 @@ const milestones = [
   { id: "m7", date: "Feb 15", label: "Post-Production Begins", status: "upcoming", color: "#CBD5E1" },
 ];
 
-function DirectorTimeline() {
+function DirectorTimeline({ projectId }: { projectId?: string }) {
+  const { overview } = useSceneViews(projectId ?? null);
+
+  // Compute days in production and days remaining from the active project
+  const [projectDates, setProjectDates] = React.useState<{ start: string; end: string } | null>(null);
+  React.useEffect(() => {
+    if (!projectId) return;
+    apiProjects.get(projectId)
+      .then((p) => { if (p.start_date && p.end_date) setProjectDates({ start: p.start_date, end: p.end_date }); })
+      .catch(() => {});
+  }, [projectId]);
+
+  const today = new Date();
+  const daysIn = projectDates
+    ? Math.max(0, Math.floor((today.getTime() - new Date(projectDates.start).getTime()) / 86400000))
+    : null;
+  const daysLeft = projectDates
+    ? Math.max(0, Math.floor((new Date(projectDates.end).getTime() - today.getTime()) / 86400000))
+    : null;
+  const scenesShot = overview ? `${overview.scenes_shot}/${overview.scenes_total}` : null;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Production Timeline" subtitle="Key milestones and schedule overview." actions={<Btn variant="secondary" icon={Download} onClick={() => toast.info("Exporting timeline…")}>Export Timeline</Btn>} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Days in Production" value={24} icon={Calendar} color="var(--verse-midnight)" />
-        <StatCard label="Days Remaining" value={23} icon={Clock} color="var(--verse-gold)" />
-        <StatCard label="Scenes Shot" value="34/47" icon={Film} color="var(--verse-emerald)" />
-        <StatCard label="On Schedule" value="Yes" icon={CheckCircle} color="var(--verse-emerald)" />
+        <StatCard label="Days in Production" value={daysIn ?? "—"} icon={Calendar} color="var(--verse-midnight)" />
+        <StatCard label="Days Remaining" value={daysLeft ?? "—"} icon={Clock} color="var(--verse-gold)" />
+        <StatCard label="Scenes Shot" value={scenesShot ?? "—"} icon={Film} color="var(--verse-emerald)" />
+        <StatCard label="Avg. Score" value={overview?.average_scene_score != null ? `${Math.round(overview.average_scene_score)}%` : "—"} icon={CheckCircle} color="var(--verse-emerald)" />
       </div>
       <Card>
         <SectionTitle>Production Milestones</SectionTitle>
@@ -2372,6 +2429,31 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
     input.click();
   };
 
+  // ── Call-sheet upload ──────────────────────────────────────────────────
+  const [callSheetUploading, setCallSheetUploading] = useState(false);
+  const handleCallSheetUpload = async (file: File) => {
+    const pid = projectId ?? "VERSE_DEMO";
+    setCallSheetUploading(true);
+    try {
+      const result = await apiUpload.callSheet(pid, file);
+      toast.success(`Call sheet "${result.filename}" ingested — ${result.facts_ingested} facts extracted.`);
+      // Refresh entity views so costume/prop tabs reflect the new data
+      const entitiesRes = await apiContinuity.entities(pid).catch(() => null);
+      if (entitiesRes) setEntityViews(entitiesRes);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Call sheet upload failed.");
+    } finally {
+      setCallSheetUploading(false);
+    }
+  };
+  const openCallSheetPicker = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf,.txt,.csv";
+    input.onchange = () => { if (input.files?.[0]) handleCallSheetUpload(input.files[0]); };
+    input.click();
+  };
+
   const isLive      = uploadResult != null;
   const scenes      = isLive ? sceneViews  : demoScenes;
   const allEntities = isLive ? entityViews : demoEntityViews;
@@ -2400,9 +2482,14 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
         title={<span className="inline-flex items-center gap-2">Screenplay Analysis <DataSourceBadge live={isLive} /></span>}
         subtitle="Upload your screenplay — VERSE extracts scenes, characters, props, and timelines automatically."
         actions={
-          <Btn variant="primary" icon={Upload} onClick={openFilePicker}>
-            {uploading ? "Uploading…" : isLive ? "Re-upload Screenplay" : "Upload Screenplay"}
-          </Btn>
+          <>
+            <Btn variant="secondary" icon={FileText} onClick={openCallSheetPicker}>
+              {callSheetUploading ? "Uploading…" : "Call Sheet"}
+            </Btn>
+            <Btn variant="primary" icon={Upload} onClick={openFilePicker}>
+              {uploading ? "Uploading…" : isLive ? "Re-upload Screenplay" : "Upload Screenplay"}
+            </Btn>
+          </>
         }
       />
 
@@ -3752,14 +3839,16 @@ function Notes() {
 
 function ContinuityUpdates({ projectId }: { projectId?: string }) {
   const demoUpdates = [
-    { id: "u1", title: "AI flagged costume discrepancy — Scene 23", time: "11:42", type: "ai", body: "Elena's jacket colour changes from navy to black between shots 23A and 23C. Wardrobe team notified." },
-    { id: "u2", title: "Marcus watch continuity issue logged", time: "09:30", type: "flag", body: "Watch absent in shots 31B–31D. Script supervisor requesting resolution before afternoon shoot." },
-    { id: "u3", title: "Scene 17 fully verified", time: "Yesterday", type: "verified", body: "All costume, prop, and timeline elements confirmed. Continuity score: 100%." },
+    { id: "u1", title: "AI flagged costume discrepancy — Scene 23", time: "11:42", type: "ai", body: "Elena's jacket colour changes from navy to black between shots 23A and 23C. Wardrobe team notified.", resolved: false },
+    { id: "u2", title: "Marcus watch continuity issue logged", time: "09:30", type: "flag", body: "Watch absent in shots 31B–31D. Script supervisor requesting resolution before afternoon shoot.", resolved: false },
+    { id: "u3", title: "Scene 17 fully verified", time: "Yesterday", type: "verified", body: "All costume, prop, and timeline elements confirmed. Continuity score: 100%.", resolved: true },
   ];
-  const [updates, setUpdates] = React.useState(demoUpdates);
+  const [updates, setUpdates] = React.useState<Array<{ id: string; title: string; time: string; type: string; body: string; resolved: boolean }>>([]);
   const [isLive, setIsLive] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState<string | null>(null);
+
   React.useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) { setUpdates(demoUpdates); return; }
     apiContinuity.issues(projectId)
       .then((issues) => {
         setIsLive(true);
@@ -3770,11 +3859,32 @@ function ContinuityUpdates({ projectId }: { projectId?: string }) {
             time: "Live",
             type: i.status === "resolved" || i.status === "dismissed" ? "verified" : i.severity === "critical" ? "flag" : "ai",
             body: i.suggested_fix || i.explanation || "Review the flagged scene with your continuity supervisor.",
+            resolved: i.status === "resolved" || i.status === "dismissed",
           }))
         );
       })
-      .catch(() => {});
+      .catch(() => { setUpdates(demoUpdates); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  const handleResolve = async (id: string) => {
+    setSubmitting(id);
+    // Optimistic UI update
+    setUpdates((prev) => prev.map((u) => u.id === id ? { ...u, resolved: true, type: "verified" } : u));
+    if (isLive && projectId) {
+      try {
+        await apiContinuity.feedback(projectId, id, "resolve");
+        toast.success("Update submitted — issue marked resolved.");
+      } catch {
+        toast.error("Could not submit to the engine — is the backend running?");
+        // Revert optimistic update on failure
+        setUpdates((prev) => prev.map((u) => u.id === id ? { ...u, resolved: false, type: "ai" } : u));
+      }
+    } else {
+      toast.success("Update submitted.");
+    }
+    setSubmitting(null);
+  };
 
   const colors = { ai: "var(--verse-violet)", flag: "var(--verse-red)", verified: "var(--verse-emerald)" };
   return (
@@ -3788,7 +3898,7 @@ function ContinuityUpdates({ projectId }: { projectId?: string }) {
       ) : (
         <div className="flex flex-col gap-3">
           {updates.map((u) => {
-            const c = colors[u.type as keyof typeof colors];
+            const c = colors[u.type as keyof typeof colors] ?? "var(--verse-violet)";
             return (
               <Card key={u.id}>
                 <div className="flex items-start gap-3">
@@ -3801,6 +3911,21 @@ function ContinuityUpdates({ projectId }: { projectId?: string }) {
                       <span className="text-xs text-muted-foreground">{u.time}</span>
                     </div>
                     <p className="text-sm text-muted-foreground leading-relaxed">{u.body}</p>
+                    {!u.resolved && (
+                      <button
+                        disabled={submitting === u.id}
+                        onClick={() => handleResolve(u.id)}
+                        className="mt-2 text-xs font-semibold px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
+                        style={{ backgroundColor: "var(--verse-emerald)", color: "white" }}
+                      >
+                        {submitting === u.id ? "Submitting…" : "Mark Resolved"}
+                      </button>
+                    )}
+                    {u.resolved && (
+                      <span className="mt-2 inline-block text-xs font-semibold px-3 py-1 rounded-lg" style={{ backgroundColor: "#ECFDF5", color: "var(--verse-emerald)" }}>
+                        Resolved
+                      </span>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -4081,13 +4206,14 @@ function SettingsPage() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function DashboardContent({
-  userRole, productionName, onAIAction, activeNav, projectId, userName,
+  userRole, productionName, onAIAction, activeNav, projectId, userName, onProjectChange,
 }: {
   userRole: UserRole; productionName: string;
   onAIAction: (id: string, action: "accept" | "dismiss") => void;
   activeNav: string;
   projectId?: string;
   userName?: string;
+  onProjectChange?: (id: string) => void;
 }) {
   // Settings page is shared across all roles
   if (activeNav === "Settings") return <SettingsPage />;
@@ -4095,24 +4221,22 @@ function DashboardContent({
   switch (userRole) {
     case "producer":
       switch (activeNav) {
-        case "Productions": return <ProducerProductions />;
+        case "Productions": return <ProducerProductions onOpenProject={onProjectChange} />;
         case "Team": return <ProducerTeam />;
         case "Continuity Reports": return <ProducerContinuityReports projectId={projectId} />;
-        case "Analytics": return <ProducerAnalytics />;
-        case "AI Insights": return <ProducerAIInsights />;
+        case "Analytics": return <ProducerAnalytics projectId={projectId} />;
+        case "AI Insights": return <ProducerAIInsights projectId={projectId} />;
         case "Workspace": return <ProducerWorkspace />;
-        // Pass projectId and userName so ProducerOverview can show the real user's
-        // name and fetch live continuity issues from GET /continuity/issues/{id}.
         default: return <ProducerOverview productionName={productionName} onAIAction={onAIAction} projectId={projectId} userName={userName} />;
       }
 
     case "director":
       switch (activeNav) {
         case "Scene Tracking": return <DirectorSceneTracking projectId={projectId} />;
-        case "Characters": return <DirectorCharacters />;
-        case "Production Timeline": return <DirectorTimeline />;
-        case "AI Recommendations": return <DirectorAIRecs onAIAction={onAIAction} />;
-        case "Semantic Memory": return <DirectorSemanticMemory />;
+        case "Characters": return <DirectorCharacters projectId={projectId} />;
+        case "Production Timeline": return <DirectorTimeline projectId={projectId} />;
+        case "AI Recommendations": return <DirectorAIRecs onAIAction={onAIAction} projectId={projectId} />;
+        case "Semantic Memory": return <DirectorSemanticMemory projectId={projectId} />;
         default: return <DirectorOverview productionName={productionName} onAIAction={onAIAction} projectId={projectId} />;
       }
 
@@ -4178,11 +4302,27 @@ export default function DashboardPage({
   const [activeNav, setActiveNav] = useState("Overview");
   const [currentRole, setCurrentRole] = useState<UserRole>(userRole);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  // Resolve the active project ID from the API on mount; fall back to demo
+  // Full project list + active project selection
+  const [projectList, setProjectList] = React.useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>(undefined);
+
   React.useEffect(() => {
-    apiProjects.list().then((list) => { if (list.length > 0) setActiveProjectId(list[0].id); }).catch(() => {});
+    apiProjects.list()
+      .then((list) => {
+        setProjectList(list);
+        if (list.length > 0 && !activeProjectId) setActiveProjectId(list[0].id);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Switch production — re-fetch the project list so stats are fresh, then
+  // switch the active id and navigate back to Overview for the new context.
+  const handleProjectChange = (id: string) => {
+    setActiveProjectId(id);
+    setActiveNav("Overview");
+    apiProjects.list().then(setProjectList).catch(() => {});
+  };
 
   // handleAIAction — posts the human decision to POST /continuity/feedback so
   // the engine persists the accept/dismiss, adjusts the issue status, and
@@ -4191,8 +4331,6 @@ export default function DashboardPage({
   const handleAIAction = async (id: string, action: "accept" | "dismiss") => {
     if (activeProjectId) {
       try {
-        // "accept" maps to the engine's "confirm" action (human verified the issue).
-        // "dismiss" maps directly to "dismiss" (human says it's not an error).
         await apiContinuity.feedback(
           activeProjectId,
           id,
@@ -4206,10 +4344,23 @@ export default function DashboardPage({
     else toast.info("Recommendation dismissed.");
   };
 
+  // After a new workspace is created in ProducerOverview, refresh the list
+  const handleProjectCreated = () => {
+    apiProjects.list()
+      .then((list) => {
+        setProjectList(list);
+        if (list.length > 0) setActiveProjectId(list[list.length - 1].id);
+      })
+      .catch(() => {});
+  };
+
   const handleSignOut = () => {
     toast.success("Signed out successfully. See you next production!");
     setTimeout(onSignOut, 700);
   };
+
+  const activeProductionName =
+    projectList.find((p) => p.id === activeProjectId)?.name ?? productionName;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -4218,7 +4369,7 @@ export default function DashboardPage({
 
       <DashboardSidebar
         userRole={currentRole}
-        productionName={productionName}
+        productionName={activeProductionName}
         userName={userName}
         isOpen={isSidebarOpen}
         activeNav={activeNav}
@@ -4228,22 +4379,26 @@ export default function DashboardPage({
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <DashboardTopNav
-          productionName={productionName}
+          productionName={activeProductionName}
           onMobileMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)}
           activeRole={currentRole}
           onRoleChange={(role) => { setCurrentRole(role); setActiveNav("Overview"); }}
           onRunAIAnalysis={() => setIsAIModalOpen(true)}
+          projects={projectList}
+          activeProjectId={activeProjectId}
+          onProjectChange={handleProjectChange}
         />
         <main className="flex-1 overflow-y-auto p-5 md:p-6" style={{ background: "linear-gradient(180deg, #F0EEFF 0%, #F5F3FF 100%)" }}>
           <div className="max-w-6xl mx-auto">
             <DashboardContent
-                userRole={currentRole}
-                productionName={productionName}
-                onAIAction={handleAIAction}
-                activeNav={activeNav}
-                projectId={activeProjectId}
-                userName={userName}
-              />
+              userRole={currentRole}
+              productionName={activeProductionName}
+              onAIAction={handleAIAction}
+              activeNav={activeNav}
+              projectId={activeProjectId}
+              userName={userName}
+              onProjectChange={handleProjectChange}
+            />
           </div>
         </main>
       </div>

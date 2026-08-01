@@ -165,16 +165,22 @@ class InviteMemberRequest(BaseModel):
 # ─── Internal helpers ─────────────────────────────────────────────────────────
 
 def _project_or_404(project_id: str, user_id: str) -> dict:
-    """Fetch project row or raise 404; raise 403 if caller is not the owner."""
+    """Fetch project row or raise 404; raise 403 if caller is neither owner nor member."""
     conn = db()
     with closing(conn.cursor()) as cur:
         row = cur.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
     if row is None:
         raise HTTPException(404, f"Project '{project_id}' not found.")
     p = dict(row)
-    if p["owner_id"] != user_id:
-        # Only the owner can read/modify a project for now.
-        # Team-member access control can be added here later.
+    if p["owner_id"] == user_id:
+        return p
+    # Allow invited team members to read the project too.
+    with closing(conn.cursor()) as cur:
+        member = cur.execute(
+            "SELECT id FROM project_members WHERE project_id = ? AND user_id = ?",
+            (project_id, user_id),
+        ).fetchone()
+    if member is None:
         raise HTTPException(403, "You do not have access to this project.")
     return p
 
