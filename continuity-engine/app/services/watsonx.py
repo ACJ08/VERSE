@@ -9,10 +9,12 @@ Usage:
 Falls back silently to rule-based text if credentials are missing or the
 API call fails — the engine always produces a complete report either way.
 
-To enable:
-    1. pip install ibm-watsonx-ai
-    2. Set environment variables:
-       WATSONX_API_KEY, WATSONX_PROJECT_ID, WATSONX_URL
+Granite integration paths (in order of preference):
+1. IBM watsonx cloud API — set WATSONX_API_KEY + WATSONX_PROJECT_ID.
+2. Local llama-cpp-python server — set GRANITE_LOCAL_URL (default: http://localhost:11435/v1).
+   This is the path used when start.sh launches the bundled model.
+   WATSONX_API_KEY is NOT required for this path.
+3. None → rule-based fallbacks; reports are still complete and accurate.
 """
 
 from __future__ import annotations
@@ -89,10 +91,87 @@ class WatsonxAdapter:
         return self._available
 
 
-def create_llm() -> WatsonxAdapter | None:
-    """Create a WatsonxAdapter if credentials are present; return None otherwise."""
+class LocalGraniteAdapter:
+    """Wraps a local llama-cpp-python OpenAI-compatible server.
+
+    Used when WATSONX_API_KEY is absent but a local Granite model is running
+    (e.g. launched by start.sh on port 11435).  Conforms to the same __call__
+    protocol as WatsonxAdapter so both can be assigned to ContinuityEngine.llm.
+
+    Configuration (all optional):
+        GRANITE_LOCAL_URL   Base URL of the OpenAI-compatible server.
+                            Default: http://localhost:11435/v1
+        GRANITE_LOCAL_MODEL Model name as reported by the server.
+                            Default: granite-3.3-2b-instruct
+        GRANITE_API_KEY     API key (ignored by llama-cpp; set to "EMPTY").
+    """
+
+    def __init__(self) -> None:
+        self._base_url = os.getenv("GRANITE_LOCAL_URL", "http://localhost:11435/v1").rstrip("/")
+        self._model = os.getenv("GRANITE_LOCAL_MODEL", "granite-3.3-2b-instruct")
+        self._api_key = os.getenv("GRANITE_API_KEY", "EMPTY")
+        self._available: bool | None = None  # lazily probed on first call
+
+    def _probe(self) -> bool:
+        """Return True if the server is reachable (TCP probe, no model load)."""
+        import socket
+        from urllib.parse import urlparse
+        parsed = urlparse(self._base_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 11435
+        try:
+            with socket.create_connection((host, port), timeout=2.0):
+                return True
+        except OSError:
+            return False
+
+    def __call__(self, prompt: str) -> str:
+        """Generate text via the local Granite OpenAI-compatible endpoint."""
+        if self._available is None:
+            self._available = self._probe()
+        if not self._available:
+            return ""
+        try:
+            from openai import OpenAI, OpenAIError
+            client = OpenAI(base_url=self._base_url, api_key=self._api_key, timeout=90.0)
+            response = client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=512,
+            )
+            content = response.choices[0].message.content or ""
+            return content.strip()
+        except Exception:
+            self._available = False
+            return ""
+
+    @property
+    def is_available(self) -> bool:
+        if self._available is None:
+            self._available = self._probe()
+        return self._available
+
+
+def create_llm() -> WatsonxAdapter | LocalGraniteAdapter | None:
+    """Create the best available LLM adapter.
+
+    Priority:
+    1. IBM watsonx cloud (WATSONX_API_KEY + WATSONX_PROJECT_ID set).
+    2. Local llama-cpp-python Granite server (GRANITE_LOCAL_URL or default port 11435).
+    3. None → rule-based fallbacks only.
+    """
+    # Path 1: cloud watsonx
     adapter = WatsonxAdapter()
-    return adapter if adapter.is_available else None
+    if adapter.is_available:
+        return adapter
+
+    # Path 2: local Granite server
+    local = LocalGraniteAdapter()
+    if local.is_available:
+        return local
+
+    return None
 
 
 def create_semantic_matcher(adapter: WatsonxAdapter | None = None):
