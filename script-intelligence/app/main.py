@@ -7,6 +7,7 @@ load_dotenv()
 
 import os
 from fastapi import FastAPI, UploadFile, File, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app._version import __version__
@@ -32,6 +33,27 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+)
+
+# ─── CORS ─────────────────────────────────────────────────────────────────────
+# Allow the Vite dev server, preview server, and the continuity-engine to call
+# this service directly. In production extend via CORS_ORIGINS env var.
+_CORS_ORIGINS = [
+    "http://localhost:5173",   # Vite dev server
+    "http://localhost:4173",   # Vite preview
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",   # Continuity engine (server-to-server calls)
+]
+_extra_origins = os.getenv("CORS_ORIGINS", "")
+if _extra_origins:
+    _CORS_ORIGINS.extend(o.strip() for o in _extra_origins.split(",") if o.strip())
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Exception Handler for Domain VERSE errors (sanitizes output, suppresses raw stack traces)
