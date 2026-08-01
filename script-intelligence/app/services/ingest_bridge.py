@@ -36,12 +36,14 @@ _HTTP_TIMEOUT = float(os.getenv("CONTINUITY_ENGINE_TIMEOUT", "30"))
 
 def _scene_continuity_to_engine_payload(
     scenes: List[SceneContinuity],
+    project_id: str = "",
 ) -> dict:
     """Convert a list of SceneContinuity objects to the continuity-engine scene JSON.
 
-    Returns the *inner* payload dict that goes inside IngestRequest.payload.
-    The engine's DynamicParser reads ``source`` + ``scenes`` from this dict.
-    The outer ``project_id`` is sent as a sibling field, not nested inside here.
+    Returns a dict with ``project_id``, ``source``, and ``scenes`` — everything
+    the engine's ingest endpoint needs.  The caller passes this dict as both the
+    top-level ``project_id`` field *and* the inner ``payload`` when building the
+    final POST body.
 
     Engine IngestRequest shape:
       POST /continuity/ingest/script
@@ -87,6 +89,7 @@ def _scene_continuity_to_engine_payload(
         engine_scenes.append(scene_entry)
 
     return {
+        "project_id": project_id,
         "source": "script",
         "scenes": engine_scenes,
     }
@@ -104,7 +107,7 @@ def forward_scenes_to_engine(
     if not scenes:
         return None
 
-    payload_body = _scene_continuity_to_engine_payload(scenes)
+    payload_body = _scene_continuity_to_engine_payload(scenes, project_id)
 
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if _ENGINE_TOKEN:

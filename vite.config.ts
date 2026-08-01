@@ -57,7 +57,9 @@ export default defineConfig({
   // corresponding FastAPI router is mounted in continuity-engine/main.py.
   server: {
     proxy: {
-      '/auth':        { target: 'http://localhost:8000', changeOrigin: true },  // POST /auth/login, /auth/register, …
+      // Proxy all /auth/* API routes to the backend EXCEPT /auth/callback,
+      // which is the frontend SPA landing page for the Google OAuth redirect.
+      '^/auth/(?!callback)': { target: 'http://localhost:8000', changeOrigin: true },  // POST /auth/login, /auth/register, …
       '/upload':      { target: 'http://localhost:8000', changeOrigin: true },  // POST /upload/screenplay, /upload/footage
       '/projects':    { target: 'http://localhost:8000', changeOrigin: true },  // CRUD /projects, /projects/{id}/team
       '/continuity':  { target: 'http://localhost:8000', changeOrigin: true },  // POST /continuity/analyse, /continuity/ingest/*
