@@ -19,12 +19,18 @@ class Settings:
     API_V1_STR: str = "/api/v1"
 
     # LLM / Granite / Ollama Configuration
-    GRANITE_BASE_URL: str = os.getenv("GRANITE_BASE_URL", "http://localhost:8000/v1").rstrip("/")
-    GRANITE_MODEL: str = os.getenv("GRANITE_MODEL", "ibm-granite/granite-4.1")
+    # Default port is 11435 (llama-cpp-python server) to avoid conflict with the
+    # continuity-engine which runs on port 8000.
+    GRANITE_BASE_URL: str = os.getenv("GRANITE_BASE_URL", "http://localhost:11435/v1").rstrip("/")
+    GRANITE_MODEL: str = os.getenv("GRANITE_MODEL", "granite-3.3-2b-instruct")
     GRANITE_API_KEY: str = os.getenv("GRANITE_API_KEY", "EMPTY")
-    LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "60.0"))
-    LLM_MAX_RETRIES: int = int(os.getenv("LLM_MAX_RETRIES", "3"))
+    LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "120.0"))
+    LLM_MAX_RETRIES: int = int(os.getenv("LLM_MAX_RETRIES", "2"))
     MAX_PARALLEL_SCENE_ANALYSES: int = int(os.getenv("MAX_PARALLEL_SCENE_ANALYSES", "4"))
+
+    # Continuity engine integration
+    CONTINUITY_ENGINE_URL: str = os.getenv("CONTINUITY_ENGINE_URL", "http://localhost:8000").rstrip("/")
+    CONTINUITY_ENGINE_TOKEN: str = os.getenv("CONTINUITY_ENGINE_TOKEN", "")
 
     # File Upload & Directory Configuration
     SCRIPT_UPLOAD_DIR: str = os.getenv("SCRIPT_UPLOAD_DIR", "uploads/scripts")
