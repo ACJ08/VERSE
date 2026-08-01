@@ -42,12 +42,14 @@ import {
 } from "@/app/data/mockData";
 import {
   projects as apiProjects, continuity as apiContinuity, upload as apiUpload,
+  scriptIntelligence as apiScript,
   sceneStatus, slotStateLabel, slotValue, pct, toDisplaySeverity,
   type SceneView, type EntityView, type SlotView, type FootageUploadResult,
-  type UploadResult, type Project, type TeamMember,
+  type UploadResult, type Project, type TeamMember, type AnalyseScriptResult,
 } from "@/app/lib/api";
 import {
   useBackendHealth, useSceneViews, useEntityViews, useFootageUpload,
+  useScriptIntelligenceHealth,
 } from "@/app/lib/hooks";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -126,7 +128,7 @@ const navigationConfigByRole: Record<UserRole, Array<{ icon: React.ElementType; 
 // ─── Shared Page Utilities ─────────────────────────────────────────────────────
 
 function PageHeader({ title, subtitle, actions }: {
-  title: React.ReactNode; subtitle?: string; actions?: React.ReactNode;
+  title: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode;
 }) {
   return (
     <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
@@ -420,12 +422,13 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
   const [phase, setPhase] = useState<"loading" | "done">("loading");
   const [stepIndex, setStepIndex] = useState(0);
   const [liveIssues, setLiveIssues] = useState<Array<{ severity: "critical"|"warning"|"info"; scene: string; issue: string; confidence: number }>>([]);
+  const [scriptStats, setScriptStats] = useState<{ scenes: number; characters: number; props: number; extractor: string } | null>(null);
   // hasStarted prevents the analysis from being re-triggered on every render
   const hasStarted = React.useRef(false);
 
   const processingSteps = [
     { label: "Parsing screenplay semantic structure…", duration: 700 },
-    { label: "Analyzing scene continuity vectors…", duration: 800 },
+    { label: "Extracting scenes via IBM Granite…", duration: 800 },
     { label: "Cross-referencing character states…", duration: 900 },
     { label: "Comparing wardrobe consistency logs…", duration: 700 },
     { label: "Detecting continuity discrepancies…", duration: 800 },
@@ -437,6 +440,7 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
     setPhase("loading");
     setStepIndex(0);
     setLiveIssues([]);
+    setScriptStats(null);
 
     // Animate steps while the real API call runs in parallel
     let currentStep = 0;
@@ -447,23 +451,39 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
     };
     animateSteps();
 
-    // Real API call — show no results if backend offline or no screenplay ingested yet
-    try {
-      const pid = projectId ?? "VERSE_DEMO";
-      const report = await apiContinuity.analyse(pid);
-      const sev = (s: string): "critical"|"warning"|"info" =>
-        s === "critical" ? "critical" : s === "high" || s === "medium" ? "warning" : "info";
-      setLiveIssues(
-        report.issues.slice(0, 5).map((i) => ({
-          severity: sev(i.severity),
-          scene: i.scene_id ?? "—",
-          issue: i.explanation || i.attribute,
-          confidence: Math.round(i.confidence * 100),
-        }))
-      );
-    } catch {
-      // Backend offline or no screenplay uploaded yet — leave liveIssues empty
-    }
+    const pid = projectId ?? "VERSE_DEMO";
+
+    // Parallel: fetch continuity issues + engine scene stats
+    await Promise.allSettled([
+      // Primary: ask continuity engine for the analysis report
+      apiContinuity.analyse(pid).then((report) => {
+        const sev = (s: string): "critical"|"warning"|"info" =>
+          s === "critical" ? "critical" : s === "high" || s === "medium" ? "warning" : "info";
+        setLiveIssues(
+          report.issues.slice(0, 5).map((i) => ({
+            severity: sev(i.severity),
+            scene: i.scene_id ?? "—",
+            issue: i.explanation || i.attribute,
+            confidence: Math.round(i.confidence * 100),
+          }))
+        );
+      }).catch(() => {}),
+
+      // Secondary: get scene + entity stats from the engine graph
+      apiContinuity.scenes(pid, false).then((scenesData) => {
+        if (scenesData.scenes?.length) {
+          const allEntities = scenesData.scenes.flatMap((sv) => sv.entities ?? []);
+          const chars = allEntities.filter((e) => e.type === "character" || e.key?.startsWith("character:")).length;
+          const props = allEntities.filter((e) => e.type === "prop"      || e.key?.startsWith("prop:")).length;
+          setScriptStats({
+            scenes: scenesData.scenes.length,
+            characters: chars,
+            props: props,
+            extractor: "Granite / VERSE Engine",
+          });
+        }
+      }).catch(() => {}),
+    ]);
 
     // Wait for animation to finish before showing results
     const totalDuration = processingSteps.reduce((s, p) => s + p.duration, 0);
@@ -482,6 +502,7 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
       setPhase("loading");
       setStepIndex(0);
       setLiveIssues([]);
+      setScriptStats(null);
     }
   }, [isOpen, runAnalysis]);
 
@@ -500,7 +521,9 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
             </div>
             <div>
               <p className="text-sm font-bold text-white">VERSE AI Analysis</p>
-              <p className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>Semantic Continuity Engine · IBM watsonx</p>
+              <p className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+                {scriptStats ? `${scriptStats.extractor}` : "IBM Granite · VERSE Engine"}
+              </p>
             </div>
           </div>
           {phase === "done" && <button onClick={onClose} className="text-white/50 hover:text-white transition-colors"><X size={18} /></button>}
@@ -514,7 +537,7 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
                   <div className="absolute inset-0 rounded-2xl border-2 border-primary/30 animate-ping" />
                 </div>
                 <p className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>Analyzing Your Production</p>
-                <p className="text-xs text-muted-foreground mt-1">The Last Scene · 47 scenes · 3 characters</p>
+                <p className="text-xs text-muted-foreground mt-1">IBM Granite · extracting scenes, characters, props…</p>
               </div>
               <div className="flex flex-col gap-2">
                 {processingSteps.map((step, index) => (
@@ -536,11 +559,33 @@ function AIAnalysisModal({ isOpen, onClose, projectId }: { isOpen: boolean; onCl
                 <p className="font-bold text-foreground" style={{ fontFamily: "var(--font-display)" }}>Analysis Complete</p>
                 <GoldBadge>{displayResults.length} issue{displayResults.length !== 1 ? "s" : ""} found</GoldBadge>
               </div>
+
+              {/* Live script intelligence stats banner */}
+              {scriptStats && (
+                <div className="grid grid-cols-3 gap-2 rounded-xl p-3 border"
+                  style={{ borderColor: "rgba(124,58,237,0.2)", background: "var(--verse-violet-light)" }}>
+                  <div className="text-center">
+                    <p className="text-lg font-bold" style={{ color: "var(--verse-violet)" }}>{scriptStats.scenes}</p>
+                    <p className="text-[10px] text-muted-foreground">Scenes</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold" style={{ color: "var(--verse-midnight)" }}>{scriptStats.characters}</p>
+                    <p className="text-[10px] text-muted-foreground">Characters</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold" style={{ color: "var(--verse-gold)" }}>{scriptStats.props}</p>
+                    <p className="text-[10px] text-muted-foreground">Props</p>
+                  </div>
+                </div>
+              )}
+
               {displayResults.length === 0 ? (
                 <div className="py-6 text-center">
                   <CheckCircle size={32} className="mx-auto mb-2 text-emerald-500" />
-                  <p className="text-sm font-semibold text-foreground">No issues detected</p>
-                  <p className="text-xs text-muted-foreground mt-1">Upload a screenplay first to run continuity analysis.</p>
+                  <p className="text-sm font-semibold text-foreground">No continuity issues detected</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {scriptStats ? "Your screenplay looks clean — no conflicts found." : "Upload a screenplay first to run continuity analysis."}
+                  </p>
                 </div>
               ) : displayResults.map((result, idx) => {
                 const colors = {
@@ -2152,13 +2197,21 @@ function ContinuityTracking({ projectId }: { projectId?: string }) {
 }
 
 function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
+  // ── script-intelligence service health ────────────────────────────────
+  // Used to decide whether to call /api/v1/analyse-and-ingest (Granite AI)
+  // or fall back to the engine's own extraction path.
+  const { online: siOnline, graniteConfigured } = useScriptIntelligenceHealth();
+
   // ── upload state ───────────────────────────────────────────────────────
   const [uploading, setUploading]   = useState(false);
   const [analysing, setAnalysing]   = useState(false);
   const [activeTab, setActiveTab]   = useState<"scenes" | "characters" | "props" | "timeline">("scenes");
+  // Live Granite result from script-intelligence service (optional)
+  const [graniteResult, setGraniteResult] = useState<AnalyseScriptResult | null>(null);
 
   const [uploadResult, setUploadResult] = useState<{
     scenes_detected: number; facts_ingested: number; filename: string;
+    extractor?: string;
     warnings?: string[];
     entities?: string[];   // "character:VICTOR_FRANKENSTEIN", "prop:KNIFE", …
   } | null>(null);
@@ -2359,15 +2412,56 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
   };
 
   // ── upload handler ────────────────────────────────────────────────────
+  // Primary path: script-intelligence /api/v1/analyse-and-ingest
+  //   → Granite AI extracts characters, props, wardrobe, continuity notes
+  //   → ingest_bridge.py forwards structured data to the continuity engine
+  //   → we then ask the engine for scenes/entities to populate the UI
+  // Fallback path: continuity-engine /upload/screenplay
+  //   → Granite cloud or heuristic regex extraction, no wardrobe/props
   const handleUpload = async (file: File) => {
     if (!file) return;
     const pid = projectId ?? "VERSE_DEMO";
     setUploading(true);
     try {
-      const rawResult = await apiUpload.screenplay(pid, file);
+      let rawResult: UploadResult;
+
+      if (siOnline && graniteConfigured) {
+        // ── Granite AI path via script-intelligence ──────────────────────
+        // analyseAndIngest runs Granite scene analysis and POSTs structured
+        // output to the continuity engine's /continuity/ingest/script.
+        const graniteRes = await apiScript.analyseAndIngest(file, pid);
+        setGraniteResult(graniteRes);
+
+        // Build a synthetic UploadResult so downstream code stays uniform
+        const charCount = graniteRes.scenes.reduce((n, s) => n + (s.characters?.length ?? 0), 0);
+        const propCount = graniteRes.scenes.reduce((n, s) => n + (s.props?.length ?? 0), 0);
+        rawResult = {
+          project_id: pid,
+          filename: graniteRes.filename,
+          scenes_detected: graniteRes.scene_count,
+          facts_ingested: charCount + propCount,
+          graph_stats: {},
+          extractor: "script-intelligence/granite",
+          entities: [
+            ...graniteRes.scenes.flatMap((s) => s.characters?.map((c) => `character:${c.name}`) ?? []),
+            ...graniteRes.scenes.flatMap((s) => s.props?.map((p) => `prop:${p.name}`) ?? []),
+          ],
+          warnings: graniteRes.errors?.length ? graniteRes.errors : undefined,
+        };
+
+        toast.success(
+          `"${graniteRes.filename}" analysed by IBM Granite — ${graniteRes.scene_count} scenes, ${charCount} characters, ${propCount} props extracted.`
+        );
+      } else {
+        // ── Engine fallback path ─────────────────────────────────────────
+        // Engine's own extraction: tries watsonx cloud Granite first, then
+        // local Granite (port 11435), then heuristic regex parser.
+        rawResult = await apiUpload.screenplay(pid, file);
+        toast.success(`"${rawResult.filename}" ingested — ${rawResult.scenes_detected} scenes, ${rawResult.facts_ingested} facts extracted.`);
+      }
+
       // Preserve entities[] — "character:NAME" strings are the ground-truth type map
       setUploadResult(rawResult);
-      toast.success(`"${rawResult.filename}" ingested — ${rawResult.scenes_detected} scenes, ${rawResult.facts_ingested} facts extracted.`);
 
       setAnalysing(true);
       try {
@@ -2476,11 +2570,25 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
     { key: "timeline",   label: "Timeline",   count: scenes.length },
   ];
 
+  // ── service availability badge ─────────────────────────────────────────
+  const extractorLabel = siOnline && graniteConfigured
+    ? "IBM Granite · script-intelligence"
+    : siOnline
+      ? "script-intelligence (no Granite)"
+      : "Engine extraction";
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title={<span className="inline-flex items-center gap-2">Screenplay Analysis <DataSourceBadge live={isLive} /></span>}
-        subtitle="Upload your screenplay — VERSE extracts scenes, characters, props, and timelines automatically."
+        subtitle={
+          <span>
+            Upload your screenplay — VERSE extracts scenes, characters, props, and timelines automatically.{" "}
+            <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${siOnline && graniteConfigured ? "text-emerald-700 bg-emerald-50" : "text-slate-500 bg-slate-100"}`}>
+              {extractorLabel}
+            </span>
+          </span>
+        }
         actions={
           <>
             <Btn variant="secondary" icon={FileText} onClick={openCallSheetPicker}>
@@ -2498,16 +2606,28 @@ function ScreenplayAnalysis({ projectId }: { projectId?: string }) {
         <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(124,58,237,0.25)", background: "var(--verse-violet-light)" }}>
           <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
           <p className="text-sm font-medium" style={{ color: "var(--verse-violet)" }}>
-            {uploading ? "Ingesting screenplay into production memory…" : "Extracting scenes, characters, props and timeline…"}
+            {uploading
+              ? siOnline && graniteConfigured
+                ? "Sending screenplay to IBM Granite for continuity analysis…"
+                : "Ingesting screenplay into production memory…"
+              : "Extracting scenes, characters, props and timeline…"}
           </p>
         </div>
       )}
       {uploadResult && !uploading && !analysing && (
-        <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ borderColor: "rgba(5,150,105,0.25)", background: "#ECFDF5" }}>
-          <CheckCircle size={16} style={{ color: "var(--verse-emerald)" }} />
-          <p className="text-sm font-medium" style={{ color: "var(--verse-emerald)" }}>
-            <span className="font-bold">{uploadResult.filename}</span> — {uploadResult.scenes_detected} scenes ingested, {uploadResult.facts_ingested} semantic facts extracted.
-          </p>
+        <div className="rounded-2xl border p-4 flex flex-col gap-1" style={{ borderColor: "rgba(5,150,105,0.25)", background: "#ECFDF5" }}>
+          <div className="flex items-center gap-3">
+            <CheckCircle size={16} style={{ color: "var(--verse-emerald)" }} />
+            <p className="text-sm font-medium" style={{ color: "var(--verse-emerald)" }}>
+              <span className="font-bold">{uploadResult.filename}</span> — {uploadResult.scenes_detected} scenes ingested, {uploadResult.facts_ingested} semantic facts extracted.
+            </p>
+          </div>
+          {uploadResult.extractor && (
+            <p className="text-[11px] text-muted-foreground ml-7">
+              Extractor: <span className="font-semibold">{uploadResult.extractor}</span>
+              {graniteResult && ` · ${graniteResult.scenes.reduce((n, s) => n + (s.characters?.length ?? 0), 0)} characters · ${graniteResult.scenes.reduce((n, s) => n + (s.props?.length ?? 0), 0)} props`}
+            </p>
+          )}
         </div>
       )}
       {uploadResult?.warnings && uploadResult.warnings.length > 0 && (
